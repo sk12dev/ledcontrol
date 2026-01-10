@@ -184,14 +184,16 @@ This creates a `dist` folder with static files that will be served by Nginx.
 
 ## Step 7: Set Up Process Manager (PM2)
 
-Create a PM2 ecosystem file at `/var/www/ledcontrol/ecosystem.config.js`:
+Create a PM2 ecosystem file at `/var/www/ledcontrol/ecosystem.config.cjs`:
+
+**Note:** Use `.cjs` extension since the project uses ES modules (`"type": "module"` in package.json).
 
 ```javascript
 module.exports = {
   apps: [
     {
       name: "wled-backend",
-      script: "./backend/dist/server.js",
+      script: "/var/www/ledcontrol/backend/dist/server.js",
       cwd: "/var/www/ledcontrol",
       instances: 1,
       exec_mode: "fork",
@@ -206,6 +208,9 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "500M",
+      min_uptime: "10s",
+      max_restarts: 10,
+      restart_delay: 4000,
     },
   ],
 };
@@ -222,7 +227,7 @@ Start the backend with PM2:
 
 ```bash
 cd /var/www/ledcontrol
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup
 ```

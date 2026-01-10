@@ -2,11 +2,7 @@
  * PM2 Ecosystem Configuration
  * Manages the backend API process
  */
-/**
- * PM2 Ecosystem Configuration
- * Manages the backend API process
- */
-export default {
+module.exports = {
   apps: [{
     name: 'wled-backend',
     script: '/var/www/ledcontrol/backend/dist/server.js',

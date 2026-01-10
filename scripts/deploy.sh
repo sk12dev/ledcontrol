@@ -106,7 +106,9 @@ if pm2 list | grep -q "wled-backend"; then
     pm2 restart wled-backend
 else
     echo "▶️  Starting PM2 application..."
-    if [ -f "ecosystem.config.js" ]; then
+    if [ -f "ecosystem.config.cjs" ]; then
+        pm2 start ecosystem.config.cjs
+    elif [ -f "ecosystem.config.js" ]; then
         pm2 start ecosystem.config.js
     else
         # Fallback: start directly
