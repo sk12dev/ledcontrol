@@ -1,0 +1,441 @@
+import { useState, useEffect } from "react";
+import { useMultiDevice } from "../hooks/useMultiDevice";
+import {
+  type Cue,
+  type CreateCueRequest,
+  type UpdateCueRequest,
+  type Device,
+} from "../api/backendClient";
+import { ColorPicker } from "./ColorPicker";
+import type { WLEDColor } from "../types/wled";
+
+interface CueStep {
+  id?: number;
+  order: number;
+  timeOffset: number;
+  transitionDuration: number;
+  targetColor: [number, number, number, number] | null;
+  targetBrightness: number | null;
+  startColor: [number, number, number, number]; // Empty array means use current
+  startBrightness: number | null;
+  deviceIds: number[];
+}
+
+interface CueBuilderProps {
+  cue?: Cue;
+  onSave: (cue: CreateCueRequest | UpdateCueRequest) => Promise<void>;
+  onCancel: () => void;
+}
+
+export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
+  const { devices, getDeviceConnectionStatus } = useMultiDevice();
+  const [name, setName] = useState(cue?.name || "");
+  const [description, setDescription] = useState(cue?.description || "");
+  const [steps, setSteps] = useState<CueStep[]>(() => {
+    if (cue?.cueSteps) {
+      return cue.cueSteps.map((step) => ({
+        id: step.id,
+        order: step.order,
+        timeOffset: step.timeOffset,
+        transitionDuration: step.transitionDuration,
+        targetColor: step.targetColor,
+        targetBrightness: step.targetBrightness,
+        startColor: step.startColor || [],
+        startBrightness: step.startBrightness,
+        deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
+      }));
+    }
+    return [];
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const connectedDevices = devices.filter(
+    (device) => getDeviceConnectionStatus(device.id)?.isConnected
+  );
+
+  const addStep = () => {
+    const newStep: CueStep = {
+      order: steps.length,
+      timeOffset: steps.length > 0 ? steps[steps.length - 1].timeOffset + 1 : 0,
+      transitionDuration: 1,
+      targetColor: [255, 255, 255, 0],
+      targetBrightness: 128,
+      startColor: [],
+      startBrightness: null,
+      deviceIds: [],
+    };
+    setSteps([...steps, newStep]);
+  };
+
+  const removeStep = (index: number) => {
+    const newSteps = steps.filter((_, i) => i !== index).map((step, i) => ({
+      ...step,
+      order: i,
+    }));
+    setSteps(newSteps);
+  };
+
+  const updateStep = (index: number, updates: Partial<CueStep>) => {
+    const newSteps = [...steps];
+    newSteps[index] = { ...newSteps[index], ...updates };
+    setSteps(newSteps);
+  };
+
+  const handleDeviceToggle = (stepIndex: number, deviceId: number) => {
+    const step = steps[stepIndex];
+    if (step.deviceIds.includes(deviceId)) {
+      updateStep(stepIndex, {
+        deviceIds: step.deviceIds.filter((id) => id !== deviceId),
+      });
+    } else {
+      updateStep(stepIndex, {
+        deviceIds: [...step.deviceIds, deviceId],
+      });
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      setError("Cue name is required");
+      return;
+    }
+
+    if (steps.length === 0) {
+      setError("At least one step is required");
+      return;
+    }
+
+    // Validate steps
+    for (const step of steps) {
+      if (step.deviceIds.length === 0) {
+        setError(`Step ${step.order + 1} must have at least one device selected`);
+        return;
+      }
+      if (!step.targetColor && step.targetBrightness === null) {
+        setError(
+          `Step ${step.order + 1} must have either a target color or brightness`
+        );
+        return;
+      }
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      const cueData: CreateCueRequest | UpdateCueRequest = {
+        name: name.trim(),
+        description: description.trim() || null,
+        steps: steps.map((step) => ({
+          ...(step.id ? { id: step.id } : {}),
+          order: step.order,
+          timeOffset: step.timeOffset,
+          transitionDuration: step.transitionDuration,
+          targetColor: step.targetColor,
+          targetBrightness: step.targetBrightness,
+          startColor: step.startColor || [],
+          startBrightness: step.startBrightness,
+          deviceIds: step.deviceIds,
+        })),
+      };
+
+      await onSave(cueData);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to save cue";
+      setError(errorMessage);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const maxTime =
+    steps.length > 0
+      ? Math.max(
+          ...steps.map(
+            (step) => step.timeOffset + step.transitionDuration
+          )
+        )
+      : 0;
+
+  return (
+    <div className="bg-gray-800 rounded-lg p-6 max-w-6xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">
+          {cue ? "Edit Cue" : "Create Cue"}
+        </h2>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-900 border border-red-500 rounded text-red-200">
+          {error}
+        </div>
+      )}
+
+      {/* Cue Metadata */}
+      <div className="mb-6 space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Name *</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600"
+            placeholder="Enter cue name..."
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600"
+            placeholder="Enter cue description..."
+            rows={2}
+          />
+        </div>
+      </div>
+
+      {/* Steps */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-semibold">Steps</h3>
+          <button
+            onClick={addStep}
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
+          >
+            Add Step
+          </button>
+        </div>
+
+        {steps.length === 0 ? (
+          <p className="text-gray-400 text-center py-8">
+            No steps yet. Click "Add Step" to create one.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {steps.map((step, index) => (
+              <div
+                key={index}
+                className="p-4 bg-gray-700 rounded-lg border border-gray-600"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <h4 className="text-lg font-semibold">Step {step.order + 1}</h4>
+                  <button
+                    onClick={() => removeStep(index)}
+                    className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Time Offset (seconds)
+                    </label>
+                    <input
+                      type="number"
+                      value={step.timeOffset}
+                      onChange={(e) =>
+                        updateStep(index, {
+                          timeOffset: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      min="0"
+                      step="0.1"
+                      className="w-full px-3 py-2 bg-gray-600 text-white rounded border border-gray-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Transition Duration (seconds)
+                    </label>
+                    <input
+                      type="number"
+                      value={step.transitionDuration}
+                      onChange={(e) =>
+                        updateStep(index, {
+                          transitionDuration: parseFloat(e.target.value) || 0,
+                        })
+                      }
+                      min="0"
+                      step="0.1"
+                      className="w-full px-3 py-2 bg-gray-600 text-white rounded border border-gray-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Target Color
+                    </label>
+                    {step.targetColor ? (
+                      <div className="space-y-2">
+                        <ColorPicker
+                          color={step.targetColor}
+                          onColorChange={async (color) =>
+                            updateStep(index, { targetColor: color })
+                          }
+                          disabled={false}
+                        />
+                        <button
+                          onClick={() => updateStep(index, { targetColor: null })}
+                          className="text-sm text-gray-400 hover:text-gray-300"
+                        >
+                          Clear (brightness only)
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          updateStep(index, {
+                            targetColor: [255, 255, 255, 0],
+                          })
+                        }
+                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm"
+                      >
+                        Set Color
+                      </button>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Target Brightness (1-255)
+                    </label>
+                    {step.targetBrightness !== null ? (
+                      <div className="space-y-2">
+                        <input
+                          type="range"
+                          min="1"
+                          max="255"
+                          value={step.targetBrightness}
+                          onChange={(e) =>
+                            updateStep(index, {
+                              targetBrightness: parseInt(e.target.value),
+                            })
+                          }
+                          className="w-full"
+                        />
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-400">
+                            {step.targetBrightness}
+                          </span>
+                          <button
+                            onClick={() =>
+                              updateStep(index, { targetBrightness: null })
+                            }
+                            className="text-sm text-gray-400 hover:text-gray-300"
+                          >
+                            Clear (color only)
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() =>
+                          updateStep(index, { targetBrightness: 128 })
+                        }
+                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm"
+                      >
+                        Set Brightness
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Target Devices *
+                  </label>
+                  {connectedDevices.length === 0 ? (
+                    <p className="text-gray-400 text-sm">
+                      No connected devices available
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {connectedDevices.map((device) => (
+                        <label
+                          key={device.id}
+                          className={`px-3 py-2 rounded cursor-pointer border ${
+                            step.deviceIds.includes(device.id)
+                              ? "bg-blue-600 border-blue-500 text-white"
+                              : "bg-gray-600 border-gray-500 text-gray-300"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={step.deviceIds.includes(device.id)}
+                            onChange={() => handleDeviceToggle(index, device.id)}
+                            className="sr-only"
+                          />
+                          {device.name}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Timeline Visualization */}
+      {steps.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-lg font-semibold mb-4">Timeline</h3>
+          <div className="relative bg-gray-700 rounded p-4 h-32 overflow-x-auto">
+            <div className="relative" style={{ width: `${Math.max(maxTime * 100, 600)}px` }}>
+              {steps.map((step, index) => (
+                <div
+                  key={index}
+                  className="absolute top-4 h-24 border-l-2 border-blue-500"
+                  style={{
+                    left: `${(step.timeOffset / maxTime) * 100}%`,
+                    width: `${((step.timeOffset + step.transitionDuration) / maxTime) * 100}%`,
+                  }}
+                >
+                  <div className="px-2 py-1 bg-blue-600 text-white text-xs rounded">
+                    Step {step.order + 1}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {step.timeOffset}s - {step.timeOffset + step.transitionDuration}s
+                  </div>
+                </div>
+              ))}
+              {/* Time markers */}
+              {Array.from({ length: Math.ceil(maxTime) + 1 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute top-0 border-l border-gray-500 text-xs text-gray-400"
+                  style={{ left: `${(i / maxTime) * 100}%` }}
+                >
+                  <span className="ml-1">{i}s</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

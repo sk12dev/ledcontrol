@@ -1,0 +1,160 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// WLED Device model
+model Device {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(255)
+  ipAddress  String    @unique @map("ip_address") @db.VarChar(45)
+  macAddress String?   @map("mac_address") @db.VarChar(17)
+  lastSeen   DateTime? @map("last_seen") @db.Timestamp
+  deviceInfo Json?     @map("device_info") // Stores full WLED device info as JSON
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  presets      Preset[]
+  userPrefs    UserPreference[]
+  cueStepDevices CueStepDevice[]
+
+  @@index([ipAddress])
+  @@map("devices")
+}
+
+// Custom Preset model
+model Preset {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  color      Int[] // [R, G, B, W] array - stored as PostgreSQL integer array
+  brightness Int // 1-255
+  deviceId   Int?     @map("device_id")
+  userId     Int?     @map("user_id") // For future multi-user support
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId])
+  @@index([userId])
+  @@map("presets")
+}
+
+// User Preferences model (for future use)
+model UserPreference {
+  id              Int      @id @default(autoincrement())
+  userId          Int?     @map("user_id")
+  defaultDeviceId Int?     @map("default_device_id")
+  theme           String?  @db.VarChar(50)
+  preferences     Json? // Flexible JSON field for additional preferences
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  defaultDevice Device? @relation(fields: [defaultDeviceId], references: [id])
+
+  @@index([userId])
+  @@map("user_preferences")
+}
+
+// Cue model - Stores cue metadata for theatre shows
+model Cue {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  description String?   @db.Text
+  userId      Int?      @map("user_id") // For future multi-user support
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  cueSteps CueStep[]
+  cueListCues CueListCue[]
+
+  @@index([userId])
+  @@map("cues")
+}
+
+// CueStep model - Individual operations within a cue
+model CueStep {
+  id                Int      @id @default(autoincrement())
+  cueId             Int      @map("cue_id")
+  order             Int      // For sorting steps
+  timeOffset        Decimal  @map("time_offset") @db.Decimal(10, 2) // Seconds - when this step starts relative to cue start
+  transitionDuration Decimal @map("transition_duration") @db.Decimal(10, 2) // Seconds - how long transition takes
+  targetColor       Int[]    @map("target_color") // [R, G, B, W] array - empty array means brightness-only
+  targetBrightness  Int?     @map("target_brightness") // 1-255, nullable for color-only
+  startColor        Int[]    @default([]) @map("start_color") // Empty array = use current device state
+  startBrightness   Int?     @map("start_brightness") // Optional, null = use current device state
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  cue       Cue           @relation(fields: [cueId], references: [id], onDelete: Cascade)
+  cueStepDevices CueStepDevice[]
+
+  @@index([cueId])
+  @@index([cueId, order])
+  @@map("cue_steps")
+}
+
+// CueStepDevice model - Links cue steps to target devices
+model CueStepDevice {
+  id        Int      @id @default(autoincrement())
+  cueStepId Int      @map("cue_step_id")
+  deviceId  Int      @map("device_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+
+  // Relations
+  cueStep CueStep @relation(fields: [cueStepId], references: [id], onDelete: Cascade)
+  device  Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([cueStepId, deviceId])
+  @@index([cueStepId])
+  @@index([deviceId])
+  @@map("cue_step_devices")
+}
+
+// CueList model - A list of cues that can be stepped through
+model CueList {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  description String?   @db.Text
+  userId      Int?      @map("user_id") // For future multi-user support
+  currentPosition Int   @default(0) @map("current_position") // Index of currently active cue (0-based)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  cueListCues CueListCue[]
+
+  @@index([userId])
+  @@map("cue_lists")
+}
+
+// CueListCue model - Links cues to cue lists with ordering
+model CueListCue {
+  id        Int      @id @default(autoincrement())
+  cueListId Int      @map("cue_list_id")
+  cueId     Int      @map("cue_id")
+  order     Int      // Order within the list (0-based)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+
+  // Relations
+  cueList CueList @relation(fields: [cueListId], references: [id], onDelete: Cascade)
+  cue     Cue     @relation(fields: [cueId], references: [id], onDelete: Cascade)
+
+  @@unique([cueListId, cueId])
+  @@unique([cueListId, order]) // Ensure unique ordering within a list
+  @@index([cueListId])
+  @@index([cueId])
+  @@map("cue_list_cues")
+}
