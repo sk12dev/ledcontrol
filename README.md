@@ -1,73 +1,130 @@
-# React + TypeScript + Vite
+# WLED Control Interface
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A full-stack application for controlling WLED devices with advanced cue system support for theatre productions.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 🎨 Multi-device WLED control
+- 🎬 Advanced cue system with timing and transitions
+- 📋 Cue lists for show management
+- 💾 Custom presets
+- 🌐 Web-based interface
+- 🗄️ PostgreSQL database backend
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Frontend
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS
 
-## Expanding the ESLint configuration
+### Backend
+- Node.js
+- Express
+- TypeScript
+- Prisma ORM
+- PostgreSQL
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Development
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Prerequisites
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Node.js 18+
+- PostgreSQL database
+- npm or yarn
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Setup
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   cd backend
+   npm install
+   cd ..
+   ```
+
+2. **Set up environment variables:**
+   
+   Create `backend/.env`:
+   ```env
+   DATABASE_URL="postgresql://wled_user:pass12345@192.168.1.39:5432/wled_control?schema=public"
+   PORT=3001
+   FRONTEND_URL=http://localhost:5173
+   ```
+   
+   Create `.env.local` for frontend:
+   ```env
+   VITE_API_URL=http://localhost:3001/api
+   ```
+
+3. **Set up database:**
+   ```bash
+   npx prisma generate
+   npx prisma migrate dev
+   ```
+
+4. **Run development servers:**
+   ```bash
+   # Terminal 1: Backend
+   cd backend
+   npm run dev
+   
+   # Terminal 2: Frontend
+   npm run dev
+   ```
+
+The application will be available at:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3001
+
+## Deployment
+
+### Quick Deploy to Ubuntu Server
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for quick start, or [docs/deployment-guide.md](docs/deployment-guide.md) for detailed instructions.
+
+**Quick steps:**
+1. Transfer files to server (see `scripts/deploy-to-server.ps1` for Windows)
+2. Run `scripts/deploy.sh` on the server
+3. Configure Nginx (see `scripts/nginx-ledcontrol.conf`)
+4. Set up environment variables (see `backend/env.template` and `env.production.template`)
+
+## Project Structure
+
+```
+ledcontrol/
+├── backend/              # Express API server
+│   ├── src/
+│   │   ├── routes/      # API routes
+│   │   ├── services/    # Business logic
+│   │   └── lib/         # Prisma client
+│   └── package.json
+├── src/                 # React frontend
+│   ├── components/      # React components
+│   ├── api/            # API client
+│   ├── hooks/          # Custom hooks
+│   └── utils/          # Utilities
+├── prisma/             # Database schema and migrations
+├── scripts/            # Deployment and utility scripts
+└── docs/               # Documentation
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Documentation
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- [Deployment Guide](docs/deployment-guide.md) - Comprehensive deployment instructions
+- [Quick Deployment](DEPLOYMENT.md) - Quick start deployment guide
+- [Database Setup](docs/database-setup.md) - PostgreSQL setup instructions
+- [Prisma Setup](docs/prisma-setup-guide.md) - Prisma ORM configuration
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Scripts
+
+- `npm run dev` - Start frontend dev server
+- `npm run build` - Build frontend for production
+- `npm run backend:dev` - Start backend dev server
+- `npm run backend:build` - Build backend for production
+- `npm run backend:start` - Start backend production server
+
+## License
+
+MIT
