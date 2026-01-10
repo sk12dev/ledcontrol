@@ -29,7 +29,7 @@ export function PresetSelector({
   const handleApplyPreset = async () => {
     const presetId = presetInput.trim() === "" ? null : parseInt(presetInput.trim(), 10);
     
-    if (presetInput.trim() !== "" && (isNaN(presetId) || presetId < 0 || presetId > 250)) {
+    if (presetInput.trim() !== "" && (presetId === null || isNaN(presetId) || presetId < 0 || presetId > 250)) {
       return;
     }
 

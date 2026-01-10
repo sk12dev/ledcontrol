@@ -45,7 +45,7 @@ function App() {
     refresh,
   } = useWLED();
 
-  const { cues, createCue, updateCue, executionStatus, fetchCues, executeCue } = useCues();
+  const { cues, createCue, updateCue, executionStatus, executeCue } = useCues();
   const { cueLists, createCueList, updateCueList } = useCueLists();
   const [viewMode, setViewMode] = useState<ViewMode>("control");
   const [editingCue, setEditingCue] = useState<Cue | null>(null);
@@ -80,9 +80,14 @@ function App() {
 
   const handleSaveCue = async (cueData: CreateCueRequest | UpdateCueRequest) => {
     if (editingCue) {
-      await updateCue(editingCue.id, cueData);
+      await updateCue(editingCue.id, cueData as UpdateCueRequest);
     } else {
-      await createCue(cueData);
+      // For creation, ensure required fields are present
+      if ('name' in cueData && cueData.name) {
+        await createCue(cueData as CreateCueRequest);
+      } else {
+        throw new Error("Cue name is required");
+      }
     }
     setEditingCue(null);
     setViewMode("cues");
@@ -117,9 +122,14 @@ function App() {
 
   const handleSaveCueList = async (cueListData: CreateCueListRequest | UpdateCueListRequest) => {
     if (editingCueList) {
-      await updateCueList(editingCueList.id, cueListData);
+      await updateCueList(editingCueList.id, cueListData as UpdateCueListRequest);
     } else {
-      await createCueList(cueListData);
+      // For creation, ensure required fields are present
+      if ('name' in cueListData && cueListData.name) {
+        await createCueList(cueListData as CreateCueListRequest);
+      } else {
+        throw new Error("Cue list name is required");
+      }
     }
     setEditingCueList(null);
     setViewMode("cue-lists");

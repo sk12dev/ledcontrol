@@ -1,12 +1,11 @@
 import { useCues } from "../hooks/useCues";
-import { executionApi } from "../api/backendClient";
 
 interface CueExecutorProps {
   cueId: number | null;
 }
 
-export function CueExecutor({ cueId }: CueExecutorProps) {
-  const { executionStatus, stopExecution, fetchExecutionStatus } = useCues();
+export function CueExecutor({ cueId: _cueId }: CueExecutorProps) {
+  const { executionStatus, stopExecution } = useCues();
 
   const handleStop = async () => {
     try {

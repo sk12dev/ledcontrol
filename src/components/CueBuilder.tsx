@@ -1,13 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMultiDevice } from "../hooks/useMultiDevice";
 import {
   type Cue,
   type CreateCueRequest,
   type UpdateCueRequest,
-  type Device,
 } from "../api/backendClient";
 import { ColorPicker } from "./ColorPicker";
-import type { WLEDColor } from "../types/wled";
 
 interface CueStep {
   id?: number;
@@ -16,7 +14,7 @@ interface CueStep {
   transitionDuration: number;
   targetColor: [number, number, number, number] | null;
   targetBrightness: number | null;
-  startColor: [number, number, number, number]; // Empty array means use current
+  startColor: [number, number, number, number] | null | []; // Empty array or null means use current
   startBrightness: number | null;
   deviceIds: number[];
 }
@@ -40,7 +38,7 @@ export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
         transitionDuration: step.transitionDuration,
         targetColor: step.targetColor,
         targetBrightness: step.targetBrightness,
-        startColor: step.startColor || [],
+        startColor: step.startColor || null,
         startBrightness: step.startBrightness,
         deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
       }));
@@ -61,7 +59,7 @@ export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
       transitionDuration: 1,
       targetColor: [255, 255, 255, 0],
       targetBrightness: 128,
-      startColor: [],
+      startColor: null,
       startBrightness: null,
       deviceIds: [],
     };
@@ -134,7 +132,9 @@ export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
           transitionDuration: step.transitionDuration,
           targetColor: step.targetColor,
           targetBrightness: step.targetBrightness,
-          startColor: step.startColor || [],
+          startColor: step.startColor && step.startColor.length === 4 
+            ? (step.startColor as [number, number, number, number])
+            : null,
           startBrightness: step.startBrightness,
           deviceIds: step.deviceIds,
         })),

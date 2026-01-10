@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { getWLEDIP, setWLEDIP, isValidIP } from "../utils/config";
+import { setWLEDIP, isValidIP } from "../utils/config";
 
 interface IPConfigProps {
   onIPChange: (ip: string) => void;

@@ -17,10 +17,18 @@ export function errorHandler(
   const message = err.message || "Internal server error";
   const details = "details" in err ? err.details : undefined;
 
-  res.status(statusCode).json({
+  const response: Record<string, unknown> = {
     error: message,
-    ...(details && { details }),
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-  });
+  };
+
+  if (details !== undefined && details !== null) {
+    response.details = details;
+  }
+
+  if (process.env.NODE_ENV === "development" && err.stack) {
+    response.stack = err.stack;
+  }
+
+  res.status(statusCode).json(response);
 }
 

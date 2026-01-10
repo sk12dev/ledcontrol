@@ -87,7 +87,7 @@ cd ledcontrol
 **Option A: Using Git (Recommended)**
 
 ```bash
-sudo git clone <your-repo-url> .
+sudo git clone https://github.com/sk12dev/ledcontrol.git
 sudo chown -R $USER:$USER /var/www/ledcontrol
 ```
 

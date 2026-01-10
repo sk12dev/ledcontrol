@@ -3,9 +3,9 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { getState, setState, getInfo, getPalettes, checkConnection } from "../api/wledClient";
+import { getState, setState, getInfo, getPalettes } from "../api/wledClient";
 import { getWLEDIP } from "../utils/config";
-import type { WLEDState, WLEDInfo, WLEDColor, ConnectionStatus } from "../types/wled";
+import type { WLEDInfo, WLEDColor, ConnectionStatus } from "../types/wled";
 
 interface UseWLEDReturn {
   // State
@@ -160,7 +160,8 @@ export function useWLED(initialIP?: string): UseWLEDReturn {
       const stateUpdate = {
         seg: [
           {
-            col: [newColor, [0, 0, 0, 0], [0, 0, 0, 0]],
+            id: 0,
+            col: [newColor, [0, 0, 0, 0], [0, 0, 0, 0]] as [WLEDColor, WLEDColor, WLEDColor],
           },
         ],
       };
@@ -209,6 +210,7 @@ export function useWLED(initialIP?: string): UseWLEDReturn {
       const stateUpdate = {
         seg: [
           {
+            id: 0,
             pal: paletteIndex,
           },
         ],
@@ -240,7 +242,7 @@ export function useWLED(initialIP?: string): UseWLEDReturn {
       setError(null);
       // Set preset ID, -1 to clear preset
       const presetValue = presetId === null ? -1 : presetId;
-      const state = await setState(ip, { ps: presetValue });
+      await setState(ip, { ps: presetValue });
       setCurrentPresetState(presetId);
       // Refresh state to get all changes from preset
       await fetchState();

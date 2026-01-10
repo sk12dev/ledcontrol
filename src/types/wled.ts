@@ -112,9 +112,19 @@ export interface WLEDResponse {
 }
 
 /**
+ * Partial segment update (for POST requests - segments can be partially updated)
+ */
+export type PartialWLEDSegment = Partial<WLEDSegment> & {
+  id?: number;
+  col?: [WLEDColor, WLEDColor, WLEDColor];
+};
+
+/**
  * Partial state update (for POST requests)
  */
-export type WLEDStateUpdate = Partial<WLEDState>;
+export type WLEDStateUpdate = Partial<Omit<WLEDState, 'seg'>> & {
+  seg?: PartialWLEDSegment[];
+};
 
 /**
  * Connection status types

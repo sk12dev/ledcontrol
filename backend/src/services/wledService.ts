@@ -61,7 +61,7 @@ export async function getDeviceState(deviceId: number): Promise<WLEDState> {
     );
   }
 
-  return response.json();
+  return response.json() as Promise<WLEDState>;
 }
 
 /**
@@ -94,7 +94,7 @@ export async function updateDeviceState(
     );
   }
 
-  return response.json();
+  return response.json() as Promise<WLEDState>;
 }
 
 /**

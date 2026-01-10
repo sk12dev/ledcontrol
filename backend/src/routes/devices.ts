@@ -3,6 +3,9 @@ import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 import type { Request, Response } from "express";
 import { connectionManager } from "../services/connectionManager.js";
+import type * as Prisma from "../../../src/generated/prisma/internal/prismaNamespace.js";
+import { JsonNull } from "../../../src/generated/prisma/internal/prismaNamespace.js";
+import type * as runtime from "@prisma/client/runtime/client";
 
 export const devicesRouter = Router();
 
@@ -133,7 +136,9 @@ devicesRouter.post("/", async (req: Request, res: Response) => {
         name: validatedData.name,
         ipAddress: validatedData.ipAddress,
         macAddress: validatedData.macAddress ?? null,
-        deviceInfo: (validatedData.deviceInfo ?? null) as unknown,
+        deviceInfo: validatedData.deviceInfo !== undefined && validatedData.deviceInfo !== null
+          ? (validatedData.deviceInfo as runtime.InputJsonValue)
+          : JsonNull,
         lastSeen: new Date(),
       },
     });
@@ -179,7 +184,7 @@ devicesRouter.put("/:id", async (req: Request, res: Response) => {
       name?: string;
       ipAddress?: string;
       macAddress?: string | null;
-      deviceInfo?: unknown;
+      deviceInfo?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
       lastSeen?: Date;
     } = {};
 
@@ -190,18 +195,15 @@ devicesRouter.put("/:id", async (req: Request, res: Response) => {
     }
     if (validatedData.macAddress !== undefined)
       updateData.macAddress = validatedData.macAddress ?? null;
-    if (validatedData.deviceInfo !== undefined)
-      updateData.deviceInfo = validatedData.deviceInfo ?? null;
+    if (validatedData.deviceInfo !== undefined) {
+      updateData.deviceInfo = validatedData.deviceInfo !== null
+        ? (validatedData.deviceInfo as runtime.InputJsonValue)
+        : JsonNull;
+    }
 
     const device = await prisma.device.update({
       where: { id },
-      data: updateData as {
-        name?: string;
-        ipAddress?: string;
-        macAddress?: string | null;
-        deviceInfo?: unknown;
-        lastSeen?: Date;
-      },
+      data: updateData,
     });
 
     res.json(device);

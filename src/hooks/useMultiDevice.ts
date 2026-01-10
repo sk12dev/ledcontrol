@@ -5,7 +5,6 @@ import {
   executionApi,
   type Device,
   type ConnectionStatus,
-  type Preset,
 } from "../api/backendClient";
 
 interface UseMultiDeviceReturn {

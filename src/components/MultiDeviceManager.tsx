@@ -14,7 +14,6 @@ export function MultiDeviceManager({
 }: MultiDeviceManagerProps) {
   const {
     devices,
-    connectionStatuses,
     loading,
     error,
     reconnectDevice,
