@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-type ViewMode = "control" | "devices" | "cues" | "cue-builder" | "cue-lists" | "cue-list-builder";
+type ViewMode = "control" | "devices" | "cues" | "cue-builder" | "cue-lists" | "cue-list-builder" | "shows" | "show-builder";
 
 interface SidebarProps {
   viewMode: ViewMode;
@@ -17,6 +17,7 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   { id: "control", label: "Single Device Control", icon: "⚡" },
   { id: "devices", label: "Multi-Device Manager", icon: "📱" },
+  { id: "shows", label: "Shows", icon: "🎭" },
   { id: "cues", label: "Cues", icon: "🎬" },
   { id: "cue-lists", label: "Cue Lists", icon: "📋" },
 ];

@@ -33,7 +33,7 @@ export function useCues(userId?: number): UseCuesReturn {
     try {
       setLoading(true);
       setError(null);
-      const data = await cuesApi.getAll(userId);
+      const data = await cuesApi.getAll(userId ? { userId } : undefined);
       setCues(data);
     } catch (err) {
       const errorMessage =

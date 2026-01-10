@@ -89,6 +89,46 @@ export interface UpdatePresetRequest {
 }
 
 /**
+ * Show from backend API
+ */
+export interface Show {
+  id: number;
+  name: string;
+  description: string | null;
+  userId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  cues?: Array<{
+    id: number;
+    name: string;
+    description: string | null;
+  }>;
+  cueLists?: Array<{
+    id: number;
+    name: string;
+    description: string | null;
+  }>;
+}
+
+/**
+ * Create show request
+ */
+export interface CreateShowRequest {
+  name: string;
+  description?: string | null;
+  userId?: number;
+}
+
+/**
+ * Update show request
+ */
+export interface UpdateShowRequest {
+  name?: string;
+  description?: string | null;
+  userId?: number;
+}
+
+/**
  * Helper function to handle API responses
  */
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -283,9 +323,15 @@ export interface Cue {
   id: number;
   name: string;
   description: string | null;
+  showId: number;
   userId: number | null;
   createdAt: string;
   updatedAt: string;
+  show?: {
+    id: number;
+    name: string;
+    description: string | null;
+  };
   cueSteps: CueStep[];
 }
 
@@ -295,6 +341,7 @@ export interface Cue {
 export interface CreateCueRequest {
   name: string;
   description?: string | null;
+  showId: number; // Required - cue must belong to a show
   userId?: number;
   steps: Array<{
     order: number;
@@ -314,6 +361,7 @@ export interface CreateCueRequest {
 export interface UpdateCueRequest {
   name?: string;
   description?: string | null;
+  showId?: number; // Optional - allow changing show
   userId?: number;
   steps?: Array<{
     id?: number;
@@ -356,10 +404,13 @@ export const cuesApi = {
   /**
    * Get all cues
    */
-  async getAll(userId?: number): Promise<Cue[]> {
+  async getAll(filters?: { userId?: number; showId?: number }): Promise<Cue[]> {
     const params = new URLSearchParams();
-    if (userId !== undefined) {
-      params.append("userId", userId.toString());
+    if (filters?.userId !== undefined) {
+      params.append("userId", filters.userId.toString());
+    }
+    if (filters?.showId !== undefined) {
+      params.append("showId", filters.showId.toString());
     }
 
     const url = params.toString()
@@ -545,10 +596,16 @@ export interface CueList {
   id: number;
   name: string;
   description: string | null;
+  showId: number;
   userId: number | null;
   currentPosition: number;
   createdAt: string;
   updatedAt: string;
+  show?: {
+    id: number;
+    name: string;
+    description: string | null;
+  };
   cueListCues: CueListCueItem[];
   currentCueId?: number | null;
 }
@@ -559,6 +616,7 @@ export interface CueList {
 export interface CreateCueListRequest {
   name: string;
   description?: string | null;
+  showId: number; // Required - cue list must belong to a show
   userId?: number;
   cueIds?: number[];
 }
@@ -569,9 +627,78 @@ export interface CreateCueListRequest {
 export interface UpdateCueListRequest {
   name?: string;
   description?: string | null;
+  showId?: number; // Optional - allow changing show
   userId?: number;
   cueIds?: number[];
 }
+
+/**
+ * Shows API
+ */
+export const showsApi = {
+  /**
+   * Get all shows
+   */
+  async getAll(userId?: number): Promise<Show[]> {
+    const params = new URLSearchParams();
+    if (userId !== undefined) {
+      params.append("userId", userId.toString());
+    }
+
+    const url = params.toString()
+      ? `${API_BASE_URL}/shows?${params.toString()}`
+      : `${API_BASE_URL}/shows`;
+
+    const response = await fetch(url);
+    return handleResponse<Show[]>(response);
+  },
+
+  /**
+   * Get show by ID
+   */
+  async getById(id: number): Promise<Show> {
+    const response = await fetch(`${API_BASE_URL}/shows/${id}`);
+    return handleResponse<Show>(response);
+  },
+
+  /**
+   * Create a new show
+   */
+  async create(show: CreateShowRequest): Promise<Show> {
+    const response = await fetch(`${API_BASE_URL}/shows`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(show),
+    });
+    return handleResponse<Show>(response);
+  },
+
+  /**
+   * Update a show
+   */
+  async update(id: number, show: UpdateShowRequest): Promise<Show> {
+    const response = await fetch(`${API_BASE_URL}/shows/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(show),
+    });
+    return handleResponse<Show>(response);
+  },
+
+  /**
+   * Delete a show
+   */
+  async delete(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/shows/${id}`, {
+      method: "DELETE",
+    });
+    return handleResponse<void>(response);
+  },
+};
 
 /**
  * Cue Lists API
@@ -580,10 +707,13 @@ export const cueListsApi = {
   /**
    * Get all cue lists
    */
-  async getAll(userId?: number): Promise<CueList[]> {
+  async getAll(filters?: { userId?: number; showId?: number }): Promise<CueList[]> {
     const params = new URLSearchParams();
-    if (userId !== undefined) {
-      params.append("userId", userId.toString());
+    if (filters?.userId !== undefined) {
+      params.append("userId", filters.userId.toString());
+    }
+    if (filters?.showId !== undefined) {
+      params.append("showId", filters.showId.toString());
     }
 
     const url = params.toString()

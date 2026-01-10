@@ -29,7 +29,7 @@ export function useCueLists(userId?: number): UseCueListsReturn {
     try {
       setLoading(true);
       setError(null);
-      const data = await cueListsApi.getAll(userId);
+      const data = await cueListsApi.getAll(userId ? { userId } : undefined);
       setCueLists(data);
     } catch (err) {
       const errorMessage =

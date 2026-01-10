@@ -10,6 +10,7 @@ export const cueListsRouter = Router();
 const createCueListSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional().nullable(),
+  showId: z.number().int().positive(), // Required - cue list must belong to a show
   userId: z.number().int().positive().optional(),
   cueIds: z.array(z.number().int().positive()).optional().default([]),
 });
@@ -17,6 +18,7 @@ const createCueListSchema = z.object({
 const updateCueListSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional().nullable(),
+  showId: z.number().int().positive().optional(), // Optional - allow changing show
   userId: z.number().int().positive().optional(),
   cueIds: z.array(z.number().int().positive()).optional(),
 });
@@ -27,16 +29,30 @@ cueListsRouter.get("/", async (req: Request, res: Response) => {
     const userId = req.query.userId
       ? parseInt(req.query.userId as string)
       : undefined;
+    const showId = req.query.showId
+      ? parseInt(req.query.showId as string)
+      : undefined;
 
     if (userId !== undefined && isNaN(userId)) {
       return res.status(400).json({ error: "Invalid userId parameter" });
+    }
+    if (showId !== undefined && isNaN(showId)) {
+      return res.status(400).json({ error: "Invalid showId parameter" });
     }
 
     const cueLists = await prisma.cueList.findMany({
       where: {
         userId: userId ?? undefined,
+        showId: showId ?? undefined,
       },
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueListCues: {
           include: {
             cue: {
@@ -73,6 +89,13 @@ cueListsRouter.get("/:id", async (req: Request, res: Response) => {
     const cueList = await prisma.cueList.findUnique({
       where: { id },
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueListCues: {
           include: {
             cue: {
@@ -124,7 +147,16 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
   try {
     const validatedData = createCueListSchema.parse(req.body);
 
-    // Validate that all cue IDs exist
+    // Validate that showId exists
+    const show = await prisma.show.findUnique({
+      where: { id: validatedData.showId },
+    });
+
+    if (!show) {
+      return res.status(400).json({ error: "Show ID not found" });
+    }
+
+    // Validate that all cue IDs exist and belong to the same show
     if (validatedData.cueIds && validatedData.cueIds.length > 0) {
       const uniqueCueIds = [...new Set(validatedData.cueIds)];
       const cues = await prisma.cue.findMany({
@@ -136,6 +168,17 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
       if (cues.length !== uniqueCueIds.length) {
         return res.status(400).json({ error: "One or more cue IDs not found" });
       }
+
+      // Validate that all cues belong to the same show as the cue list
+      const cuesFromDifferentShow = cues.filter(
+        (cue) => cue.showId !== validatedData.showId
+      );
+
+      if (cuesFromDifferentShow.length > 0) {
+        return res.status(400).json({
+          error: `One or more cues belong to a different show. All cues must belong to show ${validatedData.showId}`,
+        });
+      }
     }
 
     // Create cue list with cue assignments
@@ -143,6 +186,7 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
       data: {
         name: validatedData.name,
         description: validatedData.description ?? null,
+        showId: validatedData.showId,
         userId: validatedData.userId,
         currentPosition: 0,
         cueListCues: {
@@ -153,6 +197,13 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
         },
       },
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueListCues: {
           include: {
             cue: {
@@ -201,6 +252,20 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Cue list not found" });
     }
 
+    // Determine the showId to use (either from update or existing)
+    const targetShowId = validatedData.showId ?? existingCueList.showId;
+
+    // If showId is being updated, validate that it exists
+    if (validatedData.showId !== undefined) {
+      const show = await prisma.show.findUnique({
+        where: { id: validatedData.showId },
+      });
+
+      if (!show) {
+        return res.status(400).json({ error: "Show ID not found" });
+      }
+    }
+
     // If cueIds are being updated, validate and replace all cue assignments
     if (validatedData.cueIds !== undefined) {
       const uniqueCueIds = [...new Set(validatedData.cueIds)];
@@ -212,6 +277,17 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
 
       if (cues.length !== uniqueCueIds.length) {
         return res.status(400).json({ error: "One or more cue IDs not found" });
+      }
+
+      // Validate that all cues belong to the same show as the cue list
+      const cuesFromDifferentShow = cues.filter(
+        (cue) => cue.showId !== targetShowId
+      );
+
+      if (cuesFromDifferentShow.length > 0) {
+        return res.status(400).json({
+          error: `One or more cues belong to a different show. All cues must belong to show ${targetShowId}`,
+        });
       }
 
       // Delete existing cue assignments
@@ -226,21 +302,42 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
           : existingCueList.currentPosition;
 
       // Update cue list with new cue assignments
+      const updateData: {
+        name?: string;
+        description?: string | null;
+        showId?: number;
+        userId?: number;
+        currentPosition: number;
+        cueListCues: {
+          create: Array<{ cueId: number; order: number }>;
+        };
+      } = {
+        currentPosition: newPosition,
+        cueListCues: {
+          create: uniqueCueIds.map((cueId, index) => ({
+            cueId,
+            order: index,
+          })),
+        },
+      };
+
+      if (validatedData.name !== undefined) updateData.name = validatedData.name;
+      if (validatedData.description !== undefined)
+        updateData.description = validatedData.description ?? null;
+      if (validatedData.showId !== undefined) updateData.showId = validatedData.showId;
+      if (validatedData.userId !== undefined) updateData.userId = validatedData.userId;
+
       const cueList = await prisma.cueList.update({
         where: { id },
-        data: {
-          name: validatedData.name ?? undefined,
-          description: validatedData.description ?? undefined,
-          userId: validatedData.userId ?? undefined,
-          currentPosition: newPosition,
-          cueListCues: {
-            create: uniqueCueIds.map((cueId, index) => ({
-              cueId,
-              order: index,
-            })),
-          },
-        },
+        data: updateData,
         include: {
+          show: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+            },
+          },
           cueListCues: {
             include: {
               cue: {
@@ -262,14 +359,30 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
     }
 
     // Update cue list metadata only
+    const updateData: {
+      name?: string;
+      description?: string | null;
+      showId?: number;
+      userId?: number;
+    } = {};
+
+    if (validatedData.name !== undefined) updateData.name = validatedData.name;
+    if (validatedData.description !== undefined)
+      updateData.description = validatedData.description ?? null;
+    if (validatedData.showId !== undefined) updateData.showId = validatedData.showId;
+    if (validatedData.userId !== undefined) updateData.userId = validatedData.userId;
+
     const cueList = await prisma.cueList.update({
       where: { id },
-      data: {
-        name: validatedData.name ?? undefined,
-        description: validatedData.description ?? undefined,
-        userId: validatedData.userId ?? undefined,
-      },
+      data: updateData,
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueListCues: {
           include: {
             cue: {
@@ -366,6 +479,13 @@ cueListsRouter.post(
           currentPosition: nextPosition,
         },
         include: {
+          show: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+            },
+          },
           cueListCues: {
             include: {
               cue: {
@@ -560,6 +680,13 @@ cueListsRouter.post("/:id/go-to", async (req: Request, res: Response) => {
         currentPosition: validatedData.position,
       },
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueListCues: {
           include: {
             cue: {

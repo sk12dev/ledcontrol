@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMultiDevice } from "../hooks/useMultiDevice";
+import { useShows } from "../hooks/useShows";
 import {
   type Cue,
   type CreateCueRequest,
@@ -21,14 +22,19 @@ interface CueStep {
 
 interface CueBuilderProps {
   cue?: Cue;
+  showId?: number; // Optional - if not provided, will use cue's showId or require selection
   onSave: (cue: CreateCueRequest | UpdateCueRequest) => Promise<void>;
   onCancel: () => void;
 }
 
-export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
+export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBuilderProps) {
   const { devices, getDeviceConnectionStatus } = useMultiDevice();
+  const { shows } = useShows();
   const [name, setName] = useState(cue?.name || "");
   const [description, setDescription] = useState(cue?.description || "");
+  const [selectedShowId, setSelectedShowId] = useState<number | null>(
+    propShowId ?? cue?.showId ?? null
+  );
   const [steps, setSteps] = useState<CueStep[]>(() => {
     if (cue?.cueSteps) {
       return cue.cueSteps.map((step) => ({
@@ -99,6 +105,11 @@ export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
       return;
     }
 
+    if (!selectedShowId) {
+      setError("Show selection is required");
+      return;
+    }
+
     if (steps.length === 0) {
       setError("At least one step is required");
       return;
@@ -125,6 +136,10 @@ export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
       const cueData: CreateCueRequest | UpdateCueRequest = {
         name: name.trim(),
         description: description.trim() || null,
+        ...(cue 
+          ? (selectedShowId !== cue.showId ? { showId: selectedShowId! } : {}) // Update if show changed
+          : { showId: selectedShowId! } // Required for new cues
+        ),
         steps: steps.map((step) => ({
           ...(step.id ? { id: step.id } : {}),
           order: step.order,
@@ -209,6 +224,28 @@ export function CueBuilder({ cue, onSave, onCancel }: CueBuilderProps) {
             placeholder="Enter cue description..."
             rows={2}
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Show *</label>
+          <select
+            value={selectedShowId ?? ""}
+            onChange={(e) => setSelectedShowId(parseInt(e.target.value) || null)}
+            disabled={!!cue && !!cue.showId} // Disable if editing existing cue with showId
+            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            required
+          >
+            <option value="">Select a show...</option>
+            {shows.map((show) => (
+              <option key={show.id} value={show.id}>
+                {show.name}
+              </option>
+            ))}
+          </select>
+          {cue && cue.showId && (
+            <p className="text-xs text-gray-400 mt-1">
+              Cue is associated with this show. To change the show, create a new cue.
+            </p>
+          )}
         </div>
       </div>
 

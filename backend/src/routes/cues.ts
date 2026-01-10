@@ -10,6 +10,7 @@ export const cuesRouter = Router();
 const createCueSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional().nullable(),
+  showId: z.number().int().positive(), // Required - cue must belong to a show
   userId: z.number().int().positive().optional(),
   steps: z
     .array(
@@ -35,6 +36,7 @@ const createCueSchema = z.object({
 const updateCueSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional().nullable(),
+  showId: z.number().int().positive().optional(), // Optional - allow changing show
   userId: z.number().int().positive().optional(),
   steps: z
     .array(
@@ -65,16 +67,30 @@ cuesRouter.get("/", async (req: Request, res: Response) => {
     const userId = req.query.userId
       ? parseInt(req.query.userId as string)
       : undefined;
+    const showId = req.query.showId
+      ? parseInt(req.query.showId as string)
+      : undefined;
 
     if (userId !== undefined && isNaN(userId)) {
       return res.status(400).json({ error: "Invalid userId parameter" });
+    }
+    if (showId !== undefined && isNaN(showId)) {
+      return res.status(400).json({ error: "Invalid showId parameter" });
     }
 
     const cues = await prisma.cue.findMany({
       where: {
         userId: userId ?? undefined,
+        showId: showId ?? undefined,
       },
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueSteps: {
           include: {
             cueStepDevices: {
@@ -115,6 +131,13 @@ cuesRouter.get("/:id", async (req: Request, res: Response) => {
     const cue = await prisma.cue.findUnique({
       where: { id },
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueSteps: {
           include: {
             cueStepDevices: {
@@ -152,6 +175,15 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
   try {
     const validatedData = createCueSchema.parse(req.body);
 
+    // Validate that showId exists
+    const show = await prisma.show.findUnique({
+      where: { id: validatedData.showId },
+    });
+
+    if (!show) {
+      return res.status(400).json({ error: "Show ID not found" });
+    }
+
     // Validate that all device IDs exist
     const deviceIds = validatedData.steps.flatMap((step) => step.deviceIds);
     const uniqueDeviceIds = [...new Set(deviceIds)];
@@ -170,6 +202,7 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
       data: {
         name: validatedData.name,
         description: validatedData.description ?? null,
+        showId: validatedData.showId,
         userId: validatedData.userId,
         cueSteps: {
           create: validatedData.steps.map((step) => ({
@@ -189,6 +222,13 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
         },
       },
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueSteps: {
           include: {
             cueStepDevices: {
@@ -263,10 +303,22 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
       });
     }
 
+    // If showId is being updated, validate that it exists
+    if (validatedData.showId !== undefined) {
+      const show = await prisma.show.findUnique({
+        where: { id: validatedData.showId },
+      });
+
+      if (!show) {
+        return res.status(400).json({ error: "Show ID not found" });
+      }
+    }
+
     // Update cue
     const updateData: {
       name?: string;
       description?: string | null;
+      showId?: number;
       userId?: number;
       cueSteps?: {
         create: Array<{
@@ -287,6 +339,7 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
     if (validatedData.name !== undefined) updateData.name = validatedData.name;
     if (validatedData.description !== undefined)
       updateData.description = validatedData.description ?? null;
+    if (validatedData.showId !== undefined) updateData.showId = validatedData.showId;
     if (validatedData.userId !== undefined) updateData.userId = validatedData.userId;
 
     if (validatedData.steps) {
@@ -312,6 +365,13 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
       where: { id },
       data: updateData,
       include: {
+        show: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
         cueSteps: {
           include: {
             cueStepDevices: {

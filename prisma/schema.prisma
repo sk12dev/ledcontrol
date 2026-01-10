@@ -66,8 +66,8 @@ model UserPreference {
   @@map("user_preferences")
 }
 
-// Cue model - Stores cue metadata for theatre shows
-model Cue {
+// Show model - Top-level organizational container for theater shows
+model Show {
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(255)
   description String?   @db.Text
@@ -76,10 +76,30 @@ model Cue {
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp
 
   // Relations
-  cueSteps CueStep[]
+  cues     Cue[]
+  cueLists CueList[]
+
+  @@index([userId])
+  @@map("shows")
+}
+
+// Cue model - Stores cue metadata for theatre shows
+model Cue {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(255)
+  description String?   @db.Text
+  showId      Int       @map("show_id") // Required - cue belongs to exactly one show
+  userId      Int?      @map("user_id") // For future multi-user support
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  show       Show      @relation(fields: [showId], references: [id], onDelete: Cascade)
+  cueSteps   CueStep[]
   cueListCues CueListCue[]
 
   @@index([userId])
+  @@index([showId])
   @@map("cues")
 }
 
@@ -128,15 +148,18 @@ model CueList {
   id          Int       @id @default(autoincrement())
   name        String    @db.VarChar(255)
   description String?   @db.Text
+  showId      Int       @map("show_id") // Required - cue list belongs to exactly one show
   userId      Int?      @map("user_id") // For future multi-user support
   currentPosition Int   @default(0) @map("current_position") // Index of currently active cue (0-based)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp
 
   // Relations
+  show       Show      @relation(fields: [showId], references: [id], onDelete: Cascade)
   cueListCues CueListCue[]
 
   @@index([userId])
+  @@index([showId])
   @@map("cue_lists")
 }
 

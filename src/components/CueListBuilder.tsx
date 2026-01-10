@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useCues } from "../hooks/useCues";
+import { useShows } from "../hooks/useShows";
 import {
   type CueList,
   type CreateCueListRequest,
@@ -8,14 +9,19 @@ import {
 
 interface CueListBuilderProps {
   cueList?: CueList;
+  showId?: number; // Optional - if not provided, will use cueList's showId or require selection
   onSave: (cueList: CreateCueListRequest | UpdateCueListRequest) => Promise<void>;
   onCancel: () => void;
 }
 
-export function CueListBuilder({ cueList, onSave, onCancel }: CueListBuilderProps) {
+export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }: CueListBuilderProps) {
+  const { shows } = useShows();
   const { cues, loading: cuesLoading } = useCues();
   const [name, setName] = useState(cueList?.name || "");
   const [description, setDescription] = useState(cueList?.description || "");
+  const [selectedShowId, setSelectedShowId] = useState<number | null>(
+    propShowId ?? cueList?.showId ?? null
+  );
   const [selectedCueIds, setSelectedCueIds] = useState<number[]>(() => {
     if (cueList?.cueListCues) {
       return cueList.cueListCues
@@ -27,9 +33,20 @@ export function CueListBuilder({ cueList, onSave, onCancel }: CueListBuilderProp
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Filter cues by selected show
+  const availableCues = useMemo(() => {
+    if (!selectedShowId) return [];
+    return cues.filter((cue) => cue.showId === selectedShowId);
+  }, [cues, selectedShowId]);
+
   const handleSave = async () => {
     if (!name.trim()) {
       setError("Cue list name is required");
+      return;
+    }
+
+    if (!selectedShowId) {
+      setError("Show selection is required");
       return;
     }
 
@@ -45,6 +62,10 @@ export function CueListBuilder({ cueList, onSave, onCancel }: CueListBuilderProp
       const cueListData: CreateCueListRequest | UpdateCueListRequest = {
         name: name.trim(),
         description: description.trim() || null,
+        ...(cueList 
+          ? (selectedShowId !== cueList.showId ? { showId: selectedShowId } : {}) // Update if show changed
+          : { showId: selectedShowId } // Required for new cue lists
+        ),
         cueIds: selectedCueIds,
       };
 
@@ -134,18 +155,55 @@ export function CueListBuilder({ cueList, onSave, onCancel }: CueListBuilderProp
           />
         </div>
 
+        {/* Show Selection */}
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">
+            Show <span className="text-red-400">*</span>
+          </label>
+          <select
+            value={selectedShowId ?? ""}
+            onChange={(e) => {
+              const newShowId = parseInt(e.target.value) || null;
+              setSelectedShowId(newShowId);
+              // Clear selected cues when show changes
+              if (newShowId !== selectedShowId) {
+                setSelectedCueIds([]);
+              }
+            }}
+            disabled={!!cueList && !!cueList.showId} // Disable if editing existing cueList with showId
+            className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            required
+          >
+            <option value="">Select a show...</option>
+            {shows.map((show) => (
+              <option key={show.id} value={show.id}>
+                {show.name}
+              </option>
+            ))}
+          </select>
+          {cueList && cueList.showId && (
+            <p className="text-xs text-gray-400 mt-1">
+              Cue list is associated with this show. To change the show, create a new cue list.
+            </p>
+          )}
+        </div>
+
         {/* Cue Selection */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Select Cues <span className="text-red-400">*</span>
           </label>
-          {cues.length === 0 ? (
+          {!selectedShowId ? (
             <p className="text-gray-400 text-sm">
-              No cues available. Create cues first before creating a cue list.
+              Please select a show first to see available cues.
+            </p>
+          ) : availableCues.length === 0 ? (
+            <p className="text-gray-400 text-sm">
+              No cues available for the selected show. Create cues for this show first.
             </p>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-600 rounded-lg p-3 bg-gray-700/50">
-              {cues.map((cue) => {
+              {availableCues.map((cue) => {
                 const isSelected = selectedCueIds.includes(cue.id);
                 return (
                   <button

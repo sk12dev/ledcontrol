@@ -15,14 +15,18 @@ import { CueBuilder } from "./components/CueBuilder";
 import { CueExecutor } from "./components/CueExecutor";
 import { CueLists } from "./components/CueLists";
 import { CueListBuilder } from "./components/CueListBuilder";
+import { Shows } from "./components/Shows";
+import { ShowBuilder } from "./components/ShowBuilder";
 import { Sidebar } from "./components/Sidebar";
 import { useCues } from "./hooks/useCues";
 import { useCueLists } from "./hooks/useCueLists";
+import { useShows } from "./hooks/useShows";
 import type { WLEDColor } from "./types/wled";
 import type { Cue, CreateCueRequest, UpdateCueRequest } from "./api/backendClient";
 import type { CueList, CreateCueListRequest, UpdateCueListRequest } from "./api/backendClient";
+import type { Show, CreateShowRequest, UpdateShowRequest } from "./api/backendClient";
 
-type ViewMode = "control" | "devices" | "cues" | "cue-builder" | "cue-lists" | "cue-list-builder";
+type ViewMode = "control" | "devices" | "cues" | "cue-builder" | "cue-lists" | "cue-list-builder" | "shows" | "show-builder";
 
 function App() {
   const {
@@ -47,9 +51,11 @@ function App() {
 
   const { cues, createCue, updateCue, executionStatus, executeCue } = useCues();
   const { cueLists, createCueList, updateCueList } = useCueLists();
+  const { shows, createShow, updateShow } = useShows();
   const [viewMode, setViewMode] = useState<ViewMode>("control");
   const [editingCue, setEditingCue] = useState<Cue | null>(null);
   const [editingCueList, setEditingCueList] = useState<CueList | null>(null);
+  const [editingShow, setEditingShow] = useState<Show | null>(null);
   const [executingCueId, setExecutingCueId] = useState<number | null>(null);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
@@ -138,6 +144,39 @@ function App() {
   const handleCancelCueList = () => {
     setEditingCueList(null);
     setViewMode("cue-lists");
+  };
+
+  const handleCreateShow = async () => {
+    setEditingShow(null);
+    setViewMode("show-builder");
+  };
+
+  const handleEditShow = (showId: number) => {
+    const show = shows.find((s) => s.id === showId);
+    if (show) {
+      setEditingShow(show);
+      setViewMode("show-builder");
+    }
+  };
+
+  const handleSaveShow = async (showData: CreateShowRequest | UpdateShowRequest) => {
+    if (editingShow) {
+      await updateShow(editingShow.id, showData as UpdateShowRequest);
+    } else {
+      // For creation, ensure required fields are present
+      if ('name' in showData && showData.name) {
+        await createShow(showData as CreateShowRequest);
+      } else {
+        throw new Error("Show name is required");
+      }
+    }
+    setEditingShow(null);
+    setViewMode("shows");
+  };
+
+  const handleCancelShow = () => {
+    setEditingShow(null);
+    setViewMode("shows");
   };
 
   return (
@@ -296,6 +335,30 @@ function App() {
               cueList={editingCueList || undefined}
               onSave={handleSaveCueList}
               onCancel={handleCancelCueList}
+            />
+          </div>
+        )}
+
+        {viewMode === "shows" && (
+          <div className="mb-8">
+            <div className="mb-6">
+              <button
+                onClick={handleCreateShow}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
+              >
+                Create New Show
+              </button>
+            </div>
+            <Shows onEdit={handleEditShow} />
+          </div>
+        )}
+
+        {viewMode === "show-builder" && (
+          <div className="mb-8">
+            <ShowBuilder
+              show={editingShow || undefined}
+              onSave={handleSaveShow}
+              onCancel={handleCancelShow}
             />
           </div>
         )}
