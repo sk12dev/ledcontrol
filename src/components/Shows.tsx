@@ -1,6 +1,5 @@
 import { useShows } from "../hooks/useShows";
 import { useState } from "react";
-import type { Show } from "../api/backendClient";
 
 interface ShowsProps {
   onEdit?: (showId: number) => void;
