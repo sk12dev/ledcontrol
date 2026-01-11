@@ -149,7 +149,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
           targetBrightness: step.targetBrightness,
           startColor: step.startColor && step.startColor.length === 4 
             ? (step.startColor as [number, number, number, number])
-            : null,
+            : undefined, // Backend expects undefined or empty array, not null
           startBrightness: step.startBrightness,
           deviceIds: step.deviceIds,
         })),

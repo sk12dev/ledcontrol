@@ -440,6 +440,13 @@ export const cuesApi = {
       },
       body: JSON.stringify(cue),
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+      console.error("[Frontend] Create cue error response:", errorData);
+      throw new Error(errorData.details ? JSON.stringify(errorData.details) : errorData.error || "Failed to create cue");
+    }
+    
     return handleResponse<Cue>(response);
   },
 
