@@ -12,10 +12,12 @@ export function CueList({ onEdit, onExecute }: CueListProps) {
     loading,
     error,
     deleteCue,
+    createCue,
     executeCue,
     executionStatus,
   } = useCues();
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
 
   const handleDelete = async (cueId: number) => {
     if (!confirm("Are you sure you want to delete this cue?")) {
@@ -41,6 +43,39 @@ export function CueList({ onEdit, onExecute }: CueListProps) {
       } catch (error) {
         console.error("Failed to execute cue:", error);
       }
+    }
+  };
+
+  const handleDuplicate = async (cueId: number) => {
+    const cueToDuplicate = cues.find((c) => c.id === cueId);
+    if (!cueToDuplicate) {
+      console.error("Cue not found for duplication");
+      return;
+    }
+
+    setDuplicatingId(cueId);
+    try {
+      await createCue({
+        name: `${cueToDuplicate.name} (Copy)`,
+        description: cueToDuplicate.description,
+        showId: cueToDuplicate.showId,
+        steps: cueToDuplicate.cueSteps
+          .sort((a, b) => a.order - b.order)
+          .map((step) => ({
+            order: step.order,
+            timeOffset: step.timeOffset,
+            transitionDuration: step.transitionDuration,
+            targetColor: step.targetColor,
+            targetBrightness: step.targetBrightness ?? undefined,
+            startColor: step.startColor ?? undefined,
+            startBrightness: step.startBrightness ?? undefined,
+            deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
+          })),
+      });
+    } catch (error) {
+      console.error("Failed to duplicate cue:", error);
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -113,7 +148,7 @@ export function CueList({ onEdit, onExecute }: CueListProps) {
                       disabled={isExecuting || executionStatus?.isRunning}
                       className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
                     >
-                      {isExecuting ? "Executing..." : "Execute"}
+                      {isExecuting ? "Going..." : "Go"}
                     </button>
                     {onEdit && (
                       <button
@@ -124,6 +159,13 @@ export function CueList({ onEdit, onExecute }: CueListProps) {
                         Edit
                       </button>
                     )}
+                    <button
+                      onClick={() => handleDuplicate(cue.id)}
+                      disabled={isExecuting || duplicatingId === cue.id}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
+                    >
+                      {duplicatingId === cue.id ? "Duplicating..." : "Duplicate"}
+                    </button>
                     <button
                       onClick={() => handleDelete(cue.id)}
                       disabled={isExecuting || deletingId === cue.id}

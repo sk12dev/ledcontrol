@@ -80,6 +80,39 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
     setSteps(newSteps);
   };
 
+  const duplicateStep = (index: number) => {
+    const stepToDuplicate = steps[index];
+    const duplicatedStep: CueStep = {
+      // Remove id since this is a new step
+      order: stepToDuplicate.order + 1,
+      timeOffset: stepToDuplicate.timeOffset + stepToDuplicate.transitionDuration,
+      transitionDuration: stepToDuplicate.transitionDuration,
+      targetColor: stepToDuplicate.targetColor 
+        ? [...stepToDuplicate.targetColor] as [number, number, number, number]
+        : null,
+      targetBrightness: stepToDuplicate.targetBrightness,
+      startColor: stepToDuplicate.startColor
+        ? (Array.isArray(stepToDuplicate.startColor) && stepToDuplicate.startColor.length === 4
+          ? [...stepToDuplicate.startColor] as [number, number, number, number]
+          : null)
+        : null,
+      startBrightness: stepToDuplicate.startBrightness,
+      deviceIds: [...stepToDuplicate.deviceIds],
+    };
+    
+    // Insert the duplicated step right after the original
+    const newSteps = [...steps];
+    newSteps.splice(index + 1, 0, duplicatedStep);
+    
+    // Update order for all steps after the insertion
+    const updatedSteps = newSteps.map((step, i) => ({
+      ...step,
+      order: i,
+    }));
+    
+    setSteps(updatedSteps);
+  };
+
   const updateStep = (index: number, updates: Partial<CueStep>) => {
     const newSteps = [...steps];
     newSteps[index] = { ...newSteps[index], ...updates };
@@ -274,18 +307,26 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
               >
                 <div className="flex justify-between items-start mb-4">
                   <h4 className="text-lg font-semibold">Step {step.order + 1}</h4>
-                  <button
-                    onClick={() => removeStep(index)}
-                    className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-sm"
-                  >
-                    Remove
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => duplicateStep(index)}
+                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm"
+                    >
+                      Duplicate
+                    </button>
+                    <button
+                      onClick={() => removeStep(index)}
+                      className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">
-                      Time Offset (seconds)
+                      Start Delay (seconds)
                     </label>
                     <input
                       type="number"
