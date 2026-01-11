@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { Box, Input, HStack, Text, Spinner } from "@chakra-ui/react";
 import type { WLEDColor } from "../types/wled";
 
 interface ColorPickerProps {
@@ -62,21 +63,33 @@ export function ColorPicker({ color, onColorChange, disabled = false }: ColorPic
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-4 bg-gray-800 rounded-lg shadow-lg">
-      <label htmlFor="color-picker" className="block text-sm font-medium text-gray-300 mb-2">
-        Color
-      </label>
-      <div className="flex items-center gap-4">
-        <div className="flex-1 flex items-center gap-3">
+    <Box w="100%" maxW="md" mx="auto" p={4} bg="gray.800" borderRadius="lg" shadow="lg">
+      <Box mb={2}>
+        <label htmlFor="color-picker" style={{ color: "#d1d5db", fontSize: "0.875rem", fontWeight: "500", display: "block", cursor: "pointer" }}>
+          Color
+        </label>
+      </Box>
+      <HStack align="center" gap={4}>
+        <HStack flex={1} align="center" gap={3}>
           <input
             id="color-picker"
             type="color"
             value={hexColor}
             onChange={(e) => handleColorChange(e.target.value)}
             disabled={disabled || isLoading}
-            className="w-16 h-16 rounded border-2 border-gray-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              width: "4rem",
+              height: "4rem",
+              borderRadius: "0.375rem",
+              border: "2px solid #4b5563",
+              cursor: disabled || isLoading ? "not-allowed" : "pointer",
+              opacity: disabled || isLoading ? 0.5 : 1,
+              padding: 0,
+              WebkitAppearance: "none",
+              appearance: "none",
+            }}
           />
-          <input
+          <Input
             type="text"
             value={hexColor}
             onChange={(e) => {
@@ -89,21 +102,24 @@ export function ColorPicker({ color, onColorChange, disabled = false }: ColorPic
               }
             }}
             disabled={disabled || isLoading}
-            className="flex-1 px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+            flex={1}
             placeholder="#FFA000"
+            bg="gray.700"
           />
-        </div>
+        </HStack>
         {isLoading && (
-          <div className="text-gray-400 text-sm">Updating...</div>
+          <Text color="gray.400" fontSize="sm">
+            <Spinner size="sm" mr={2} />
+            Updating...
+          </Text>
         )}
-      </div>
-      <div className="mt-3 flex items-center gap-2 text-sm text-gray-400">
-        <span>RGB:</span>
-        <span className="font-mono">
+      </HStack>
+      <HStack mt={3} gap={2} fontSize="sm" color="gray.400">
+        <Text>RGB:</Text>
+        <Text fontFamily="mono">
           ({color[0]}, {color[1]}, {color[2]})
-        </span>
-      </div>
-    </div>
+        </Text>
+      </HStack>
+    </Box>
   );
 }
-

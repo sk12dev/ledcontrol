@@ -16,7 +16,11 @@
     "migrate": "tsx -e \"import { migrateLocalStorageToBackend } from './src/utils/migrateToBackend.ts'; migrateLocalStorageToBackend().then(r => console.log('Migration complete:', r)).catch(e => console.error('Migration failed:', e))\""
   },
   "dependencies": {
+    "@chakra-ui/react": "^3.31.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "dotenv": "^17.2.3",
+    "framer-motion": "^12.25.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

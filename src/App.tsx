@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Box, Container, Heading, Text, VStack, Flex, Button } from "@chakra-ui/react";
 import { useWLED } from "./hooks/useWLED";
 import { IPConfig } from "./components/IPConfig";
 import { PowerToggle } from "./components/PowerToggle";
@@ -180,191 +181,188 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <Box minH="100vh" bg="gray.900" color="white">
       <MigrationPrompt />
       <Sidebar 
         viewMode={viewMode} 
         onViewModeChange={setViewMode}
         onExpandedChange={setSidebarExpanded}
       />
-      <div className={`min-h-screen transition-all duration-300 ${sidebarExpanded ? "md:ml-64" : "md:ml-16"}`}>
-        <div className="container mx-auto px-4 py-8">
+      <Box
+        minH="100vh"
+        transition="all 0.3s"
+        ml={{ base: 0, md: sidebarExpanded ? "256px" : "64px" }}
+      >
+        <Container maxW="container.xl" px={4} py={8}>
           {/* Header */}
-          <header className="mb-8">
-            <h1 className="text-4xl font-bold text-center mb-2">WLED Theatre Controller</h1>
-            <p className="text-center text-gray-400">
+          <Box as="header" mb={8}>
+            <Heading as="h1" size="2xl" textAlign="center" mb={2}>
+              WLED Theatre Controller
+            </Heading>
+            <Text textAlign="center" color="gray.400">
               Control your programmable LED strips for theatre shows
-            </p>
-          </header>
+            </Text>
+          </Box>
 
-        {/* Execution Status */}
-        {executionStatus?.isRunning && (
-          <div className="mb-8">
-            <CueExecutor cueId={executingCueId || executionStatus.cueId} />
-          </div>
-        )}
+          {/* Execution Status */}
+          {executionStatus?.isRunning && (
+            <Box mb={8}>
+              <CueExecutor cueId={executingCueId || executionStatus.cueId} />
+            </Box>
+          )}
 
-        {/* View Content */}
-        {viewMode === "control" && (
-          <>
-            {/* IP Configuration */}
-            <div className="mb-8">
-              <IPConfig onIPChange={handleIPChange} currentIP={ip} />
-            </div>
+          {/* View Content */}
+          {viewMode === "control" && (
+            <>
+              {/* IP Configuration */}
+              <Box mb={8}>
+                <IPConfig onIPChange={handleIPChange} currentIP={ip} />
+              </Box>
 
-            {/* Main Control Area */}
-            {connectionStatus === "connected" && (
-              <div className="mb-8 space-y-8">
-                {/* Power Toggle */}
-                <div className="flex justify-center">
-                  <PowerToggle
-                    power={power}
-                    onToggle={togglePower}
-                    disabled={connectionStatus !== "connected"}
-                  />
-                </div>
+              {/* Main Control Area */}
+              {connectionStatus === "connected" && (
+                <VStack gap={8} mb={8}>
+                  {/* Power Toggle */}
+                  <Flex justify="center">
+                    <PowerToggle
+                      power={power}
+                      onToggle={togglePower}
+                      disabled={connectionStatus !== "connected"}
+                    />
+                  </Flex>
 
-                {/* Color Picker */}
-                <div className="flex justify-center">
-                  <ColorPicker
-                    color={color}
-                    onColorChange={setColor}
-                    disabled={connectionStatus !== "connected"}
-                  />
-                </div>
+                  {/* Color Picker */}
+                  <Flex justify="center">
+                    <ColorPicker
+                      color={color}
+                      onColorChange={setColor}
+                      disabled={connectionStatus !== "connected"}
+                    />
+                  </Flex>
 
-                {/* Brightness Slider */}
-                <div className="flex justify-center">
-                  <BrightnessSlider
-                    brightness={brightness}
-                    onBrightnessChange={setBrightness}
-                    disabled={connectionStatus !== "connected"}
-                  />
-                </div>
+                  {/* Brightness Slider */}
+                  <Flex justify="center">
+                    <BrightnessSlider
+                      brightness={brightness}
+                      onBrightnessChange={setBrightness}
+                      disabled={connectionStatus !== "connected"}
+                    />
+                  </Flex>
 
-                {/* Custom Presets */}
-                <div className="flex justify-center">
-                  <CustomPresets
-                    color={color}
-                    brightness={brightness}
-                    onApplyPreset={handleApplyPreset}
-                    disabled={connectionStatus !== "connected"}
-                  />
-                </div>
+                  {/* Custom Presets */}
+                  <Flex justify="center">
+                    <CustomPresets
+                      color={color}
+                      brightness={brightness}
+                      onApplyPreset={handleApplyPreset}
+                      disabled={connectionStatus !== "connected"}
+                    />
+                  </Flex>
 
-                {/* Palette Selector */}
-                <div className="flex justify-center">
-                  <PaletteSelector
-                    palettes={palettes}
-                    currentPalette={currentPalette}
-                    onPaletteChange={setPalette}
-                    disabled={connectionStatus !== "connected"}
-                  />
-                </div>
+                  {/* Palette Selector */}
+                  <Flex justify="center">
+                    <PaletteSelector
+                      palettes={palettes}
+                      currentPalette={currentPalette}
+                      onPaletteChange={setPalette}
+                      disabled={connectionStatus !== "connected"}
+                    />
+                  </Flex>
 
-                {/* Preset Selector */}
-                <div className="flex justify-center">
-                  <PresetSelector
-                    currentPreset={currentPreset}
-                    onPresetChange={setPreset}
-                    disabled={connectionStatus !== "connected"}
-                  />
-                </div>
-              </div>
-            )}
+                  {/* Preset Selector */}
+                  <Flex justify="center">
+                    <PresetSelector
+                      currentPreset={currentPreset}
+                      onPresetChange={setPreset}
+                      disabled={connectionStatus !== "connected"}
+                    />
+                  </Flex>
+                </VStack>
+              )}
 
-            {/* Connection Status */}
-            <div className="mt-8">
-              <ConnectionStatus
-                status={connectionStatus}
-                deviceInfo={deviceInfo}
-                error={error}
-                onRefresh={refresh}
+              {/* Connection Status */}
+              <Box mt={8}>
+                <ConnectionStatus
+                  status={connectionStatus}
+                  deviceInfo={deviceInfo}
+                  error={error}
+                  onRefresh={refresh}
+                />
+              </Box>
+            </>
+          )}
+
+          {viewMode === "devices" && (
+            <Box mb={8}>
+              <MultiDeviceManager />
+            </Box>
+          )}
+
+          {viewMode === "cues" && (
+            <Box mb={8}>
+              <Box mb={6}>
+                <Button colorScheme="green" onClick={handleCreateCue}>
+                  Create New Cue
+                </Button>
+              </Box>
+              <CueListComponent onEdit={handleEditCue} onExecute={handleExecuteCue} />
+            </Box>
+          )}
+
+          {viewMode === "cue-builder" && (
+            <Box mb={8}>
+              <CueBuilder
+                cue={editingCue || undefined}
+                onSave={handleSaveCue}
+                onCancel={handleCancelCue}
               />
-            </div>
-          </>
-        )}
+            </Box>
+          )}
 
-        {viewMode === "devices" && (
-          <div className="mb-8">
-            <MultiDeviceManager />
-          </div>
-        )}
+          {viewMode === "cue-lists" && (
+            <Box mb={8}>
+              <Box mb={6}>
+                <Button colorScheme="green" onClick={handleCreateCueList}>
+                  Create New Cue List
+                </Button>
+              </Box>
+              <CueLists onEdit={handleEditCueList} />
+            </Box>
+          )}
 
-        {viewMode === "cues" && (
-          <div className="mb-8">
-            <div className="mb-6">
-              <button
-                onClick={handleCreateCue}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
-              >
-                Create New Cue
-              </button>
-            </div>
-            <CueListComponent onEdit={handleEditCue} onExecute={handleExecuteCue} />
-          </div>
-        )}
+          {viewMode === "cue-list-builder" && (
+            <Box mb={8}>
+              <CueListBuilder
+                cueList={editingCueList || undefined}
+                onSave={handleSaveCueList}
+                onCancel={handleCancelCueList}
+              />
+            </Box>
+          )}
 
-        {viewMode === "cue-builder" && (
-          <div className="mb-8">
-            <CueBuilder
-              cue={editingCue || undefined}
-              onSave={handleSaveCue}
-              onCancel={handleCancelCue}
-            />
-          </div>
-        )}
+          {viewMode === "shows" && (
+            <Box mb={8}>
+              <Box mb={6}>
+                <Button colorScheme="green" onClick={handleCreateShow}>
+                  Create New Show
+                </Button>
+              </Box>
+              <Shows onEdit={handleEditShow} />
+            </Box>
+          )}
 
-        {viewMode === "cue-lists" && (
-          <div className="mb-8">
-            <div className="mb-6">
-              <button
-                onClick={handleCreateCueList}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
-              >
-                Create New Cue List
-              </button>
-            </div>
-            <CueLists onEdit={handleEditCueList} />
-          </div>
-        )}
-
-        {viewMode === "cue-list-builder" && (
-          <div className="mb-8">
-            <CueListBuilder
-              cueList={editingCueList || undefined}
-              onSave={handleSaveCueList}
-              onCancel={handleCancelCueList}
-            />
-          </div>
-        )}
-
-        {viewMode === "shows" && (
-          <div className="mb-8">
-            <div className="mb-6">
-              <button
-                onClick={handleCreateShow}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
-              >
-                Create New Show
-              </button>
-            </div>
-            <Shows onEdit={handleEditShow} />
-          </div>
-        )}
-
-        {viewMode === "show-builder" && (
-          <div className="mb-8">
-            <ShowBuilder
-              show={editingShow || undefined}
-              onSave={handleSaveShow}
-              onCancel={handleCancelShow}
-            />
-          </div>
-        )}
-        </div>
-      </div>
-    </div>
+          {viewMode === "show-builder" && (
+            <Box mb={8}>
+              <ShowBuilder
+                show={editingShow || undefined}
+                onSave={handleSaveShow}
+                onCancel={handleCancelShow}
+              />
+            </Box>
+          )}
+        </Container>
+      </Box>
+    </Box>
   );
 }
 

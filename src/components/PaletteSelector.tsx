@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { Box, FieldRoot, FieldLabel, NativeSelectRoot, NativeSelectField, Text, Spinner, HStack } from "@chakra-ui/react";
 
 interface PaletteSelectorProps {
   palettes: string[];
@@ -39,50 +40,38 @@ export function PaletteSelector({
   }
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 max-w-md mx-auto">
-      <label htmlFor="palette-select" className="block text-sm font-medium text-gray-300 mb-2">
-        Color Palette
-      </label>
-      <div className="relative">
-        <select
-          id="palette-select"
-          value={currentPalette}
-          onChange={handlePaletteChange}
-          disabled={disabled || loading}
-          className="w-full bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-3 pr-10 appearance-none focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {palettes.map((palette, index) => (
-            <option key={index} value={index}>
-              {palette === "RSVD" || palette === "-" ? `[Reserved ${index}]` : palette}
-            </option>
-          ))}
-        </select>
-        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-          {loading ? (
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-500"></div>
-          ) : (
-            <svg
-              className="w-5 h-5 text-gray-400"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
-          )}
-        </div>
-      </div>
-      {currentPalette >= 0 && currentPalette < palettes.length && (
-        <p className="mt-2 text-xs text-gray-400">
-          Selected: <span className="text-yellow-400">{palettes[currentPalette]}</span>
-        </p>
-      )}
-    </div>
+    <Box bg="gray.800" borderRadius="lg" p={6} maxW="md" mx="auto">
+      <FieldRoot>
+        <FieldLabel htmlFor="palette-select" color="gray.300" mb={2} fontSize="sm">
+          Color Palette
+        </FieldLabel>
+        <NativeSelectRoot disabled={disabled || loading}>
+          <NativeSelectField
+            id="palette-select"
+            value={String(currentPalette)}
+            onChange={handlePaletteChange}
+            bg="gray.700"
+          >
+            {palettes.map((palette, index) => (
+              <option key={index} value={index}>
+                {palette === "RSVD" || palette === "-" ? `[Reserved ${index}]` : palette}
+              </option>
+            ))}
+          </NativeSelectField>
+        </NativeSelectRoot>
+        {loading && (
+          <HStack mt={2} gap={2}>
+            <Spinner size="sm" color="yellow.500" />
+            <Text fontSize="xs" color="gray.400">Updating...</Text>
+          </HStack>
+        )}
+        {currentPalette >= 0 && currentPalette < palettes.length && (
+          <Text mt={2} fontSize="xs" color="gray.400">
+            Selected: <Text as="span" color="yellow.400">{palettes[currentPalette]}</Text>
+          </Text>
+        )}
+      </FieldRoot>
+    </Box>
   );
 }
 

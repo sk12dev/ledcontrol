@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Box, Button, VStack, Heading, Flex } from "@chakra-ui/react";
 
 type ViewMode = "control" | "devices" | "cues" | "cue-builder" | "cue-lists" | "cue-list-builder" | "shows" | "show-builder";
 
@@ -37,77 +38,88 @@ export function Sidebar({ viewMode, onViewModeChange, onExpandedChange }: Sideba
     <>
       {/* Backdrop overlay for mobile when expanded */}
       {isExpanded && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+        <Box
+          position="fixed"
+          inset={0}
+          bg="blackAlpha.500"
+          zIndex={40}
+          display={{ base: "block", md: "none" }}
           onClick={toggleSidebar}
         />
       )}
 
       {/* Sidebar */}
-      <aside
-        className={`
-          fixed left-0 top-0 h-full bg-gray-800 border-r border-gray-700 z-50
-          transition-all duration-300 ease-in-out
-          ${isExpanded ? "w-64" : "w-16"}
-        `}
+      <Box
+        as="aside"
+        position="fixed"
+        left={0}
+        top={0}
+        h="100vh"
+        bg="gray.800"
+        borderRight="1px"
+        borderColor="gray.700"
+        zIndex={50}
+        w={isExpanded ? "256px" : "64px"}
+        transition="all 0.3s ease-in-out"
       >
         {/* Toggle Button */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-700">
+        <Flex
+          align="center"
+          justify="space-between"
+          h={16}
+          px={4}
+          borderBottom="1px"
+          borderColor="gray.700"
+        >
           {isExpanded && (
-            <h2 className="text-lg font-bold text-white">Menu</h2>
+            <Heading as="h2" size="md" color="white">
+              Menu
+            </Heading>
           )}
-          <button
+          <Button
             onClick={toggleSidebar}
-            className="p-2 rounded hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+            variant="ghost"
+            p={2}
+            color="gray.300"
+            _hover={{ bg: "gray.700", color: "white" }}
             aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
           >
-            {isExpanded ? (
-              <span className="text-xl">←</span>
-            ) : (
-              <span className="text-xl">☰</span>
-            )}
-          </button>
-        </div>
+            {isExpanded ? "←" : "☰"}
+          </Button>
+        </Flex>
 
         {/* Menu Items */}
-        <nav className="mt-4">
-          <ul className="space-y-1 px-2">
+        <Box as="nav" mt={4}>
+          <VStack gap={1} px={2} align="stretch">
             {menuItems.map((item) => {
               const isActive = viewMode === item.id;
               return (
-                <li key={item.id}>
-                  <button
-                    onClick={() => {
-                      onViewModeChange(item.id);
-                      // Auto-collapse on mobile after selection
-                      if (window.innerWidth < 768) {
-                        setIsExpanded(false);
-                      }
-                    }}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-3 rounded-lg
-                      transition-colors duration-200
-                      ${
-                        isActive
-                          ? "bg-blue-600 text-white"
-                          : "text-gray-300 hover:bg-gray-700 hover:text-white"
-                      }
-                    `}
-                    title={!isExpanded ? item.label : undefined}
-                  >
-                    <span className="text-2xl flex-shrink-0">{item.icon}</span>
-                    {isExpanded && (
-                      <span className="font-medium whitespace-nowrap">
-                        {item.label}
-                      </span>
-                    )}
-                  </button>
-                </li>
+                <Button
+                  key={item.id}
+                  onClick={() => {
+                    onViewModeChange(item.id);
+                    // Auto-collapse on mobile after selection
+                    if (window.innerWidth < 768) {
+                      setIsExpanded(false);
+                    }
+                  }}
+                  w="full"
+                  justifyContent="flex-start"
+                  gap={3}
+                  px={3}
+                  py={3}
+                  variant={isActive ? "solid" : "ghost"}
+                  colorScheme={isActive ? "blue" : "gray"}
+                  title={!isExpanded ? item.label : undefined}
+                >
+                  <Box fontSize="2xl">{item.icon}</Box>
+                  {isExpanded && item.label}
+                </Button>
               );
             })}
-          </ul>
-        </nav>
-      </aside>
+          </VStack>
+        </Box>
+      </Box>
     </>
   );
 }

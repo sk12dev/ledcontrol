@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { DialogRoot, DialogBackdrop, DialogPositioner, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogCloseTrigger, Button, Text, VStack, ListRoot, ListItem, Box } from "@chakra-ui/react";
 import { needsMigration, migrateLocalStorageToBackend } from "../utils/migrateToBackend";
 
 export function MigrationPrompt() {
@@ -16,7 +17,6 @@ export function MigrationPrompt() {
   } | null>(null);
 
   useEffect(() => {
-    // Check if migration is needed
     if (needsMigration()) {
       setShowPrompt(true);
     }
@@ -54,58 +54,68 @@ export function MigrationPrompt() {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6">
-        <h2 className="text-xl font-semibold text-white mb-4">
-          Migrate Data to Backend
-        </h2>
-        <p className="text-gray-300 mb-6">
-          We found data in your browser's local storage. Would you like to migrate it to the backend database?
-          This will make your data available across devices and browsers.
-        </p>
+    <DialogRoot open={showPrompt} onOpenChange={(details) => !details.open && handleDismiss()}>
+      <DialogBackdrop bg="blackAlpha.500" />
+      <DialogPositioner>
+        <DialogContent bg="gray.800" maxW="md" mx={4}>
+          <DialogHeader>
+            <DialogTitle color="white">
+              Migrate Data to Backend
+            </DialogTitle>
+            <DialogCloseTrigger />
+          </DialogHeader>
+          <DialogBody>
+            <Text color="gray.300" mb={6}>
+              We found data in your browser's local storage. Would you like to migrate it to the backend database?
+              This will make your data available across devices and browsers.
+            </Text>
 
-        {migrationResult && (
-          <div className="mb-4 p-3 bg-gray-700 rounded">
-            <p className="text-sm text-gray-300 mb-2">
-              <strong>Migration Complete:</strong>
-            </p>
-            <ul className="text-sm text-gray-400 space-y-1">
-              <li>✅ Devices migrated: {migrationResult.devicesMigrated}</li>
-              <li>✅ Presets migrated: {migrationResult.presetsMigrated}</li>
-              {migrationResult.errors.length > 0 && (
-                <li className="text-red-400">
-                  ❌ Errors: {migrationResult.errors.length}
-                </li>
-              )}
-            </ul>
-            {migrationResult.errors.length > 0 && (
-              <div className="mt-2 text-xs text-red-400">
-                {migrationResult.errors.map((err, i) => (
-                  <div key={i}>{err}</div>
-                ))}
-              </div>
+            {migrationResult && (
+              <Box mb={4} p={3} bg="gray.700" borderRadius="md">
+                <Text fontSize="sm" color="gray.300" mb={2} fontWeight="bold">
+                  Migration Complete:
+                </Text>
+                <ListRoot fontSize="sm" color="gray.400" gap={1}>
+                  <ListItem>✅ Devices migrated: {migrationResult.devicesMigrated}</ListItem>
+                  <ListItem>✅ Presets migrated: {migrationResult.presetsMigrated}</ListItem>
+                  {migrationResult.errors.length > 0 && (
+                    <ListItem color="red.400">
+                      ❌ Errors: {migrationResult.errors.length}
+                    </ListItem>
+                  )}
+                </ListRoot>
+                {migrationResult.errors.length > 0 && (
+                  <VStack mt={2} align="stretch" gap={1}>
+                    {migrationResult.errors.map((err, i) => (
+                      <Text key={i} fontSize="xs" color="red.400">
+                        {err}
+                      </Text>
+                    ))}
+                  </VStack>
+                )}
+              </Box>
             )}
-          </div>
-        )}
-
-        <div className="flex gap-3">
-          <button
-            onClick={handleMigrate}
-            disabled={isMigrating || (migrationResult !== null && migrationResult.errors.length === 0)}
-            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isMigrating ? "Migrating..." : migrationResult ? "Migrated!" : "Migrate Now"}
-          </button>
-          <button
-            onClick={handleDismiss}
-            disabled={isMigrating}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors disabled:opacity-50"
-          >
-            {migrationResult && migrationResult.errors.length === 0 ? "Close" : "Later"}
-          </button>
-        </div>
-      </div>
-    </div>
+          </DialogBody>
+          <DialogFooter gap={3}>
+            <Button
+              onClick={handleMigrate}
+              disabled={isMigrating || (migrationResult !== null && migrationResult.errors.length === 0)}
+              colorScheme="blue"
+              flex={1}
+              loading={isMigrating}
+            >
+              {migrationResult ? "Migrated!" : "Migrate Now"}
+            </Button>
+            <Button
+              onClick={handleDismiss}
+              disabled={isMigrating}
+              colorScheme="gray"
+            >
+              {migrationResult && migrationResult.errors.length === 0 ? "Close" : "Later"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogPositioner>
+    </DialogRoot>
   );
 }
-

@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { Box, Text, HStack, Spinner, SliderRoot, SliderTrack, SliderRange, SliderThumb } from "@chakra-ui/react";
 
 interface BrightnessSliderProps {
   brightness: number;
@@ -49,35 +50,49 @@ export function BrightnessSlider({
   const percentage = Math.round((displayBrightness / 255) * 100);
 
   return (
-    <div className="w-full max-w-md mx-auto p-4 bg-gray-800 rounded-lg shadow-lg">
-      <label htmlFor="brightness-slider" className="block text-sm font-medium text-gray-300 mb-2">
-        Brightness
-      </label>
-      <div className="flex items-center gap-4">
-        <input
+    <Box w="100%" maxW="md" mx="auto" p={4} bg="gray.800" borderRadius="lg" shadow="lg">
+      <Box mb={2}>
+        <label htmlFor="brightness-slider" style={{ color: "#d1d5db", fontSize: "0.875rem", fontWeight: "500", display: "block", cursor: "pointer" }}>
+          Brightness
+        </label>
+      </Box>
+      <HStack align="center" gap={4}>
+        <SliderRoot
           id="brightness-slider"
-          type="range"
-          min="1"
-          max="255"
-          value={displayBrightness}
-          onChange={(e) => {
-            const value = parseInt(e.target.value, 10);
-            if (!isNaN(value)) {
+          min={1}
+          max={255}
+          value={[displayBrightness]}
+          onValueChange={(details) => {
+            const value = details.value[0];
+            if (value !== undefined && !isNaN(value)) {
               handleChange(value);
             }
           }}
           disabled={disabled || isLoading}
-          className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-        <div className="w-20 text-right">
-          <span className="text-lg font-mono text-white">{percentage}%</span>
-          <span className="text-xs text-gray-400 block">({displayBrightness})</span>
-        </div>
-      </div>
+          flex={1}
+          colorPalette="yellow"
+        >
+          <SliderTrack>
+            <SliderRange />
+          </SliderTrack>
+          <SliderThumb index={0} />
+        </SliderRoot>
+        <Box w={20} textAlign="right">
+          <Text fontSize="lg" fontFamily="mono" color="white">
+            {percentage}%
+          </Text>
+          <Text fontSize="xs" color="gray.400">
+            ({displayBrightness})
+          </Text>
+        </Box>
+      </HStack>
       {isLoading && (
-        <div className="mt-2 text-xs text-gray-400">Updating...</div>
+        <HStack mt={2} fontSize="xs" color="gray.400">
+          <Spinner size="xs" />
+          <Text>Updating...</Text>
+        </HStack>
       )}
-    </div>
+    </Box>
   );
 }
 

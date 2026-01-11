@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { Button } from "@chakra-ui/react";
 
 interface PowerToggleProps {
   power: boolean;
@@ -26,28 +27,28 @@ export function PowerToggle({ power, onToggle, disabled = false }: PowerTogglePr
   };
 
   return (
-    <button
+    <Button
       onClick={handleClick}
       disabled={disabled || isLoading}
-      className={`
-        w-32 h-32 rounded-full font-bold text-xl transition-all duration-300
-        focus:outline-none focus:ring-4 focus:ring-offset-4 focus:ring-offset-gray-900
-        ${power
-          ? "bg-yellow-400 hover:bg-yellow-500 text-gray-900 shadow-lg shadow-yellow-400/50"
-          : "bg-gray-700 hover:bg-gray-600 text-gray-300 shadow-lg"
-        }
-        ${disabled || isLoading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
-        ${isLoading ? "animate-pulse" : ""}
-      `}
+      w={32}
+      h={32}
+      borderRadius="full"
+      fontWeight="bold"
+      fontSize="xl"
+      loading={isLoading}
+      shadow="lg"
+      bg={power ? "yellow.400" : "gray.700"}
+      color={power ? "gray.900" : "gray.300"}
+      _hover={{
+        bg: power ? "yellow.500" : "gray.600",
+      }}
+      _disabled={{
+        opacity: 0.5,
+        cursor: "not-allowed",
+      }}
     >
-      {isLoading ? (
-        <span className="text-sm">...</span>
-      ) : power ? (
-        "ON"
-      ) : (
-        "OFF"
-      )}
-    </button>
+      {isLoading ? "..." : power ? "ON" : "OFF"}
+    </Button>
   );
 }
 

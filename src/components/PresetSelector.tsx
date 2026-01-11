@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { Box, FieldRoot, FieldLabel, Input, HStack, Button, Text, IconButton } from "@chakra-ui/react";
 
 interface PresetSelectorProps {
   currentPreset: number | null;
@@ -58,54 +59,54 @@ export function PresetSelector({
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 max-w-md mx-auto">
-      <label htmlFor="preset-input" className="block text-sm font-medium text-gray-300 mb-2">
-        Preset ID (0-250)
-      </label>
-      <div className="flex gap-2">
-        <input
-          id="preset-input"
-          type="number"
-          min="0"
-          max="250"
-          value={presetInput}
-          onChange={(e) => setPresetInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          disabled={disabled || loading}
-          placeholder="Enter preset ID..."
-          className="flex-1 bg-gray-700 text-white border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-        <button
-          onClick={handleApplyPreset}
-          disabled={disabled || loading}
-          className="px-4 py-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-        >
-          {loading ? (
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-          ) : (
-            "Apply"
-          )}
-        </button>
-        {currentPreset !== null && (
-          <button
-            onClick={handleClearPreset}
+    <Box bg="gray.800" borderRadius="lg" p={6} maxW="md" mx="auto">
+      <FieldRoot>
+        <FieldLabel htmlFor="preset-input" color="gray.300" mb={2} fontSize="sm">
+          Preset ID (0-250)
+        </FieldLabel>
+        <HStack gap={2}>
+          <Input
+            id="preset-input"
+            type="number"
+            min={0}
+            max={250}
+            value={presetInput}
+            onChange={(e) => setPresetInput(e.target.value)}
+            onKeyPress={handleKeyPress}
             disabled={disabled || loading}
-            className="px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-800"
-            title="Clear preset"
+            placeholder="Enter preset ID..."
+            flex={1}
+            bg="gray.700"
+          />
+          <Button
+            onClick={handleApplyPreset}
+            disabled={disabled || loading}
+            colorScheme="yellow"
+            loading={loading}
           >
-            ✕
-          </button>
+            Apply
+          </Button>
+          {currentPreset !== null && (
+            <IconButton
+              onClick={handleClearPreset}
+              disabled={disabled || loading}
+              colorScheme="gray"
+              aria-label="Clear preset"
+            >
+              <Text>✕</Text>
+            </IconButton>
+          )}
+        </HStack>
+        {currentPreset !== null && (
+          <Text mt={2} fontSize="xs" color="gray.400">
+            Active preset: <Text as="span" color="yellow.400">{currentPreset}</Text>
+          </Text>
         )}
-      </div>
-      {currentPreset !== null && (
-        <p className="mt-2 text-xs text-gray-400">
-          Active preset: <span className="text-yellow-400">{currentPreset}</span>
-        </p>
-      )}
-      <p className="mt-2 text-xs text-gray-500">
-        Note: Presets must be configured on your WLED device first
-      </p>
-    </div>
+        <Text mt={2} fontSize="xs" color="gray.500">
+          Note: Presets must be configured on your WLED device first
+        </Text>
+      </FieldRoot>
+    </Box>
   );
 }
 
