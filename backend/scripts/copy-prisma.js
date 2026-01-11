@@ -1,5 +1,5 @@
 import { readdirSync, statSync, copyFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -13,21 +13,32 @@ if (!existsSync(srcDir)) {
   process.exit(0);
 }
 
-// Create destination directory if it doesn't exist
-mkdirSync(destDir, { recursive: true });
-
-// Copy all .js files from compiled location to source location
-const files = readdirSync(srcDir);
-let copiedCount = 0;
-
-files.forEach((file) => {
-  const srcFile = join(srcDir, file);
-  const destFile = join(destDir, file);
+// Recursively copy all .js files
+function copyRecursive(src, dest) {
+  if (!existsSync(src)) return 0;
   
-  if (statSync(srcFile).isFile() && file.endsWith('.js')) {
-    copyFileSync(srcFile, destFile);
-    copiedCount++;
+  mkdirSync(dest, { recursive: true });
+  let copiedCount = 0;
+  
+  const entries = readdirSync(src);
+  
+  for (const entry of entries) {
+    const srcPath = join(src, entry);
+    const destPath = join(dest, entry);
+    const stats = statSync(srcPath);
+    
+    if (stats.isDirectory()) {
+      // Recursively copy subdirectories
+      copiedCount += copyRecursive(srcPath, destPath);
+    } else if (stats.isFile() && entry.endsWith('.js')) {
+      // Copy JavaScript files
+      copyFileSync(srcPath, destPath);
+      copiedCount++;
+    }
   }
-});
+  
+  return copiedCount;
+}
 
+const copiedCount = copyRecursive(srcDir, destDir);
 console.log(`Copied ${copiedCount} Prisma client JavaScript file(s) to ${destDir}`);
