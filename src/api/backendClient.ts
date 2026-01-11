@@ -313,6 +313,7 @@ export interface CueStep {
   targetBrightness: number | null;
   startColor: [number, number, number, number] | null;
   startBrightness: number | null;
+  turnOff: boolean;
   cueStepDevices: CueStepDevice[];
 }
 
@@ -351,6 +352,7 @@ export interface CreateCueRequest {
     targetBrightness?: number | null;
     startColor?: [number, number, number, number] | null;
     startBrightness?: number | null;
+    turnOff?: boolean;
     deviceIds: number[];
   }>;
 }
@@ -372,6 +374,7 @@ export interface UpdateCueRequest {
     targetBrightness?: number | null;
     startColor?: [number, number, number, number] | null;
     startBrightness?: number | null;
+    turnOff?: boolean;
     deviceIds: number[];
   }>;
 }

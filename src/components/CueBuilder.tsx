@@ -17,6 +17,7 @@ interface CueStep {
   targetBrightness: number | null;
   startColor: [number, number, number, number] | null | []; // Empty array or null means use current
   startBrightness: number | null;
+  turnOff: boolean;
   deviceIds: number[];
 }
 
@@ -25,9 +26,10 @@ interface CueBuilderProps {
   showId?: number; // Optional - if not provided, will use cue's showId or require selection
   onSave: (cue: CreateCueRequest | UpdateCueRequest) => Promise<void>;
   onCancel: () => void;
+  onTest?: (cue: CreateCueRequest | UpdateCueRequest) => Promise<void>;
 }
 
-export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBuilderProps) {
+export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }: CueBuilderProps) {
   const { devices, getDeviceConnectionStatus } = useMultiDevice();
   const { shows } = useShows();
   const [name, setName] = useState(cue?.name || "");
@@ -46,12 +48,14 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
         targetBrightness: step.targetBrightness,
         startColor: step.startColor || null,
         startBrightness: step.startBrightness,
+        turnOff: step.turnOff ?? false,
         deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
       }));
     }
     return [];
   });
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const connectedDevices = devices.filter(
@@ -67,6 +71,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
       targetBrightness: 128,
       startColor: null,
       startBrightness: null,
+      turnOff: false,
       deviceIds: [],
     };
     setSteps([...steps, newStep]);
@@ -97,6 +102,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
           : null)
         : null,
       startBrightness: stepToDuplicate.startBrightness,
+      turnOff: stepToDuplicate.turnOff,
       deviceIds: [...stepToDuplicate.deviceIds],
     };
     
@@ -184,6 +190,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
             ? (step.startColor as [number, number, number, number])
             : undefined, // Backend expects undefined or empty array, not null
           startBrightness: step.startBrightness,
+          turnOff: step.turnOff,
           deviceIds: step.deviceIds,
         })),
       };
@@ -195,6 +202,78 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
       setError(errorMessage);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!onTest) {
+      return;
+    }
+
+    // Validate the same way as save
+    if (!name.trim()) {
+      setError("Cue name is required");
+      return;
+    }
+
+    if (!selectedShowId) {
+      setError("Show selection is required");
+      return;
+    }
+
+    if (steps.length === 0) {
+      setError("At least one step is required");
+      return;
+    }
+
+    // Validate steps
+    for (const step of steps) {
+      if (step.deviceIds.length === 0) {
+        setError(`Step ${step.order + 1} must have at least one device selected`);
+        return;
+      }
+      if (!step.turnOff && !step.targetColor && step.targetBrightness === null) {
+        setError(
+          `Step ${step.order + 1} must have either a target color, brightness, or be set to turn off`
+        );
+        return;
+      }
+    }
+
+    setTesting(true);
+    setError(null);
+
+    try {
+      const cueData: CreateCueRequest | UpdateCueRequest = {
+        name: name.trim(),
+        description: description.trim() || null,
+        ...(cue 
+          ? (selectedShowId !== cue.showId ? { showId: selectedShowId! } : {}) // Update if show changed
+          : { showId: selectedShowId! } // Required for new cues
+        ),
+        steps: steps.map((step) => ({
+          ...(step.id ? { id: step.id } : {}),
+          order: step.order,
+          timeOffset: step.timeOffset,
+          transitionDuration: step.transitionDuration,
+          targetColor: step.targetColor,
+          targetBrightness: step.targetBrightness,
+          startColor: step.startColor && step.startColor.length === 4 
+            ? (step.startColor as [number, number, number, number])
+            : undefined, // Backend expects undefined or empty array, not null
+          startBrightness: step.startBrightness,
+          turnOff: step.turnOff,
+          deviceIds: step.deviceIds,
+        })),
+      };
+
+      await onTest(cueData);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to test cue";
+      setError(errorMessage);
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -220,9 +299,18 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
           >
             Cancel
           </button>
+          {onTest && (
+            <button
+              onClick={handleTest}
+              disabled={testing || saving}
+              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
+            >
+              {testing ? "Testing..." : "Test Cue"}
+            </button>
+          )}
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || testing}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
           >
             {saving ? "Saving..." : "Save"}
@@ -360,6 +448,26 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
                   </div>
                 </div>
 
+                {/* Turn Off Option */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={step.turnOff}
+                      onChange={(e) =>
+                        updateStep(index, { turnOff: e.target.checked })
+                      }
+                      className="w-4 h-4 text-red-600 bg-gray-700 border-gray-600 rounded focus:ring-red-500"
+                    />
+                    <span className="text-sm font-medium text-red-400">
+                      Turn Device Off
+                    </span>
+                  </label>
+                  <p className="text-xs text-gray-400 mt-1 ml-6">
+                    When enabled, the device will be turned off instead of setting color/brightness
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">
@@ -372,11 +480,12 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
                           onColorChange={async (color) =>
                             updateStep(index, { targetColor: color })
                           }
-                          disabled={false}
+                          disabled={step.turnOff}
                         />
                         <button
                           onClick={() => updateStep(index, { targetColor: null })}
                           className="text-sm text-gray-400 hover:text-gray-300"
+                          disabled={step.turnOff}
                         >
                           Clear (brightness only)
                         </button>
@@ -388,7 +497,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
                             targetColor: [255, 255, 255, 0],
                           })
                         }
-                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm"
+                        disabled={step.turnOff}
+                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Set Color
                       </button>
@@ -410,7 +520,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
                               targetBrightness: parseInt(e.target.value),
                             })
                           }
-                          className="w-full"
+                          disabled={step.turnOff}
+                          className="w-full disabled:opacity-50"
                         />
                         <div className="flex justify-between items-center">
                           <span className="text-sm text-gray-400">
@@ -420,7 +531,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
                             onClick={() =>
                               updateStep(index, { targetBrightness: null })
                             }
-                            className="text-sm text-gray-400 hover:text-gray-300"
+                            disabled={step.turnOff}
+                            className="text-sm text-gray-400 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Clear (color only)
                           </button>
@@ -431,7 +543,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel }: CueBui
                         onClick={() =>
                           updateStep(index, { targetBrightness: 128 })
                         }
-                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm"
+                        disabled={step.turnOff}
+                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Set Brightness
                       </button>

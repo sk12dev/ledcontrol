@@ -27,6 +27,7 @@ const createCueSchema = z.object({
           ])
           .optional(),
         startBrightness: z.number().int().min(1).max(255).optional().nullable(),
+        turnOff: z.boolean().optional().default(false),
         deviceIds: z.array(z.number().int().positive()).min(1),
       })
     )
@@ -54,6 +55,7 @@ const updateCueSchema = z.object({
           ])
           .optional(),
         startBrightness: z.number().int().min(1).max(255).optional().nullable(),
+        turnOff: z.boolean().optional().default(false),
         deviceIds: z.array(z.number().int().positive()).min(1),
       })
     )
@@ -213,6 +215,7 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
             targetBrightness: step.targetBrightness ?? null,
             startColor: step.startColor || [],
             startBrightness: step.startBrightness ?? null,
+            turnOff: step.turnOff ?? false,
             cueStepDevices: {
               create: step.deviceIds.map((deviceId) => ({
                 deviceId,
@@ -329,6 +332,7 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
           targetBrightness: number | null;
           startColor: number[];
           startBrightness: number | null;
+          turnOff: boolean;
           cueStepDevices: {
             create: Array<{ deviceId: number }>;
           };
@@ -352,6 +356,7 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
             targetBrightness: step.targetBrightness ?? null,
             startColor: step.startColor || [],
             startBrightness: step.startBrightness ?? null,
+            turnOff: step.turnOff ?? false,
           cueStepDevices: {
             create: step.deviceIds.map((deviceId) => ({
               deviceId,

@@ -6,6 +6,7 @@
 import { prisma } from "../lib/prisma.js";
 import {
   updateDeviceColorAndBrightness,
+  updateDeviceState,
   getDeviceState,
 } from "./wledService.js";
 
@@ -18,6 +19,7 @@ interface CueStepWithDevices {
   targetBrightness: number | null;
   startColor: number[]; // Empty array means use current
   startBrightness: number | null;
+  turnOff: boolean;
   devices: number[];
 }
 
@@ -96,6 +98,7 @@ class CueExecutionService {
       targetBrightness: step.targetBrightness,
       startColor: step.startColor || [],
       startBrightness: step.startBrightness,
+      turnOff: step.turnOff ?? false,
       devices: step.cueStepDevices.map((csd) => csd.deviceId),
     }));
 
@@ -179,6 +182,28 @@ class CueExecutionService {
     if (existingTimeout) {
       clearInterval(existingTimeout);
       this.transitionFrames.delete(deviceId);
+    }
+
+    // If turnOff is true, turn the device off directly
+    if (step.turnOff) {
+      try {
+        // Wait until timeOffset
+        const startTimeout = setTimeout(async () => {
+          this.activeTimeouts.delete(startTimeout);
+          await updateDeviceState(deviceId, {
+            on: false,
+            transition: Math.round(step.transitionDuration * 10), // WLED transition is in 100ms units
+          });
+        }, step.timeOffset * 1000);
+        this.activeTimeouts.add(startTimeout);
+        return;
+      } catch (error) {
+        console.error(
+          `Failed to turn off device ${deviceId}:`,
+          error
+        );
+        return;
+      }
     }
 
     // Get current device state if start values are not specified

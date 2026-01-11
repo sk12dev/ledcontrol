@@ -105,6 +105,36 @@ function App() {
     setViewMode("cues");
   };
 
+  const handleTestCue = async (cueData: CreateCueRequest | UpdateCueRequest) => {
+    // Validate required fields
+    if (!('name' in cueData) || !cueData.name?.trim()) {
+      throw new Error("Cue name is required");
+    }
+
+    let cueId: number;
+    
+    // Save or update the cue first (execution requires a saved cue)
+    if (editingCue) {
+      const updatedCue = await updateCue(editingCue.id, cueData as UpdateCueRequest);
+      cueId = updatedCue.id;
+      // Update the editing cue state with the latest data
+      setEditingCue(updatedCue);
+    } else {
+      // For creation, ensure required fields are present
+      if ('name' in cueData && cueData.name) {
+        const newCue = await createCue(cueData as CreateCueRequest);
+        cueId = newCue.id;
+        // Set the newly created cue as editing so we can test it
+        setEditingCue(newCue);
+      } else {
+        throw new Error("Cue name is required");
+      }
+    }
+
+    // Execute the cue
+    await handleExecuteCue(cueId);
+  };
+
   const handleExecuteCue = async (cueId: number) => {
     try {
       setExecutingCueId(cueId);
@@ -315,6 +345,7 @@ function App() {
                 cue={editingCue || undefined}
                 onSave={handleSaveCue}
                 onCancel={handleCancelCue}
+                onTest={handleTestCue}
               />
             </Box>
           )}

@@ -114,6 +114,7 @@ model CueStep {
   targetBrightness  Int?     @map("target_brightness") // 1-255, nullable for color-only
   startColor        Int[]    @default([]) @map("start_color") // Empty array = use current device state
   startBrightness   Int?     @map("start_brightness") // Optional, null = use current device state
+  turnOff           Boolean  @default(false) @map("turn_off") // If true, turn device off instead of setting color/brightness
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp
 
