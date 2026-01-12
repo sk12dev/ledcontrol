@@ -176,7 +176,6 @@ model CueListCue {
   cueList CueList @relation(fields: [cueListId], references: [id], onDelete: Cascade)
   cue     Cue     @relation(fields: [cueId], references: [id], onDelete: Cascade)
 
-  @@unique([cueListId, cueId])
   @@unique([cueListId, order]) // Ensure unique ordering within a list
   @@index([cueListId])
   @@index([cueId])

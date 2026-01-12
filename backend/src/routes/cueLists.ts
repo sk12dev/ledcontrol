@@ -158,6 +158,7 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
 
     // Validate that all cue IDs exist and belong to the same show
     if (validatedData.cueIds && validatedData.cueIds.length > 0) {
+      // Get unique cue IDs for validation (duplicates are allowed in the list)
       const uniqueCueIds = [...new Set(validatedData.cueIds)];
       const cues = await prisma.cue.findMany({
         where: {
@@ -268,6 +269,7 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
 
     // If cueIds are being updated, validate and replace all cue assignments
     if (validatedData.cueIds !== undefined) {
+      // Get unique cue IDs for validation (duplicates are allowed in the list)
       const uniqueCueIds = [...new Set(validatedData.cueIds)];
       const cues = await prisma.cue.findMany({
         where: {
@@ -295,13 +297,13 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
         where: { cueListId: id },
       });
 
-      // Reset current position if it would be out of bounds
+      // Reset current position if it would be out of bounds (use full array length including duplicates)
       const newPosition =
-        existingCueList.currentPosition >= uniqueCueIds.length
-          ? Math.max(0, uniqueCueIds.length - 1)
+        existingCueList.currentPosition >= validatedData.cueIds.length
+          ? Math.max(0, validatedData.cueIds.length - 1)
           : existingCueList.currentPosition;
 
-      // Update cue list with new cue assignments
+      // Update cue list with new cue assignments (preserve duplicates)
       const updateData: {
         name?: string;
         description?: string | null;
@@ -314,7 +316,7 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
       } = {
         currentPosition: newPosition,
         cueListCues: {
-          create: uniqueCueIds.map((cueId, index) => ({
+          create: validatedData.cueIds.map((cueId, index) => ({
             cueId,
             order: index,
           })),

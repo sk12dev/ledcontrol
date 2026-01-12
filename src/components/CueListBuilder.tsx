@@ -79,12 +79,14 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
     }
   };
 
-  const handleCueToggle = (cueId: number) => {
-    if (selectedCueIds.includes(cueId)) {
-      setSelectedCueIds(selectedCueIds.filter((id) => id !== cueId));
-    } else {
-      setSelectedCueIds([...selectedCueIds, cueId]);
-    }
+  const handleCueAdd = (cueId: number) => {
+    // Always add the cue, allowing duplicates
+    setSelectedCueIds([...selectedCueIds, cueId]);
+  };
+
+  const handleRemoveByIndex = (index: number) => {
+    // Remove the cue at the specific index
+    setSelectedCueIds(selectedCueIds.filter((_, i) => i !== index));
   };
 
   const handleMoveUp = (index: number) => {
@@ -204,31 +206,28 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-600 rounded-lg p-3 bg-gray-700/50">
               {availableCues.map((cue) => {
-                const isSelected = selectedCueIds.includes(cue.id);
+                const count = selectedCueIds.filter((id) => id === cue.id).length;
                 return (
                   <button
                     key={cue.id}
-                    onClick={() => handleCueToggle(cue.id)}
-                    className={`w-full p-3 rounded text-left transition-colors ${
-                      isSelected
-                        ? "bg-blue-600 hover:bg-blue-700"
-                        : "bg-gray-600 hover:bg-gray-500"
-                    }`}
+                    onClick={() => handleCueAdd(cue.id)}
+                    className="w-full p-3 rounded text-left transition-colors bg-gray-600 hover:bg-gray-500"
                     disabled={saving}
                   >
                     <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleCueToggle(cue.id)}
-                        className="w-4 h-4"
-                        disabled={saving}
-                      />
+                      <div className="w-4 h-4 flex items-center justify-center border-2 border-gray-400 rounded">
+                        <span className="text-xs text-gray-300">+</span>
+                      </div>
                       <div className="flex-1">
                         <div className="font-medium text-white">{cue.name}</div>
                         {cue.description && (
                           <div className="text-xs text-gray-300 mt-1">
                             {cue.description}
+                          </div>
+                        )}
+                        {count > 0 && (
+                          <div className="text-xs text-blue-400 mt-1">
+                            {count} time{count !== 1 ? "s" : ""} in list
                           </div>
                         )}
                       </div>
@@ -251,7 +250,7 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
                 const cue = cues.find((c) => c.id === cueId);
                 return (
                   <div
-                    key={cueId}
+                    key={`${cueId}-${index}`}
                     className="flex items-center gap-2 p-2 bg-gray-600 rounded"
                   >
                     <button
@@ -275,7 +274,7 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
                       {cue?.name || `Cue ${cueId}`}
                     </div>
                     <button
-                      onClick={() => handleCueToggle(cueId)}
+                      onClick={() => handleRemoveByIndex(index)}
                       disabled={saving}
                       className="px-2 py-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white text-xs"
                     >
