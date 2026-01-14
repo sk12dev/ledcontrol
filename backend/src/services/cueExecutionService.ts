@@ -186,24 +186,23 @@ class CueExecutionService {
 
     // If turnOff is true, turn the device off directly
     if (step.turnOff) {
-      try {
-        // Wait until timeOffset
-        const startTimeout = setTimeout(async () => {
-          this.activeTimeouts.delete(startTimeout);
+      // Wait until timeOffset
+      const startTimeout = setTimeout(async () => {
+        this.activeTimeouts.delete(startTimeout);
+        try {
           await updateDeviceState(deviceId, {
             on: false,
             transition: Math.round(step.transitionDuration * 10), // WLED transition is in 100ms units
           });
-        }, step.timeOffset * 1000);
-        this.activeTimeouts.add(startTimeout);
-        return;
-      } catch (error) {
-        console.error(
-          `Failed to turn off device ${deviceId}:`,
-          error
-        );
-        return;
-      }
+        } catch (error) {
+          console.error(
+            `Failed to turn off device ${deviceId}:`,
+            error
+          );
+        }
+      }, step.timeOffset * 1000);
+      this.activeTimeouts.add(startTimeout);
+      return;
     }
 
     // Get current device state if start values are not specified

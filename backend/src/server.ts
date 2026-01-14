@@ -13,6 +13,19 @@ import { connectionManager } from "./services/connectionManager.js";
 // Load environment variables
 dotenv.config();
 
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (reason: unknown, promise: Promise<unknown>) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  // Don't exit the process - just log the error
+});
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (error: Error) => {
+  console.error("Uncaught Exception:", error);
+  // Exit the process for uncaught exceptions as the application is in an undefined state
+  process.exit(1);
+});
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 

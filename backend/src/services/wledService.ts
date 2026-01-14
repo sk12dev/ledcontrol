@@ -53,15 +53,31 @@ export async function getDeviceState(deviceId: number): Promise<WLEDState> {
   }
 
   const baseURL = getBaseURL(device.ipAddress);
-  const response = await fetch(`${baseURL}/state`);
+  
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+  
+  try {
+    const response = await fetch(`${baseURL}/state`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch state from device ${device.name}: ${response.status} ${response.statusText}`
+      );
+    }
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch state from device ${device.name}: ${response.status} ${response.statusText}`
-    );
+    return response.json() as Promise<WLEDState>;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Connection timeout while fetching state from device ${device.name}`);
+    }
+    throw error;
   }
-
-  return response.json() as Promise<WLEDState>;
 }
 
 /**
@@ -80,21 +96,36 @@ export async function updateDeviceState(
   }
 
   const baseURL = getBaseURL(device.ipAddress);
-  const response = await fetch(`${baseURL}/state`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(state),
-  });
+  
+  // Create AbortController for timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+  
+  try {
+    const response = await fetch(`${baseURL}/state`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(state),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(
+        `Failed to update state on device ${device.name}: ${response.status} ${response.statusText}`
+      );
+    }
 
-  if (!response.ok) {
-    throw new Error(
-      `Failed to update state on device ${device.name}: ${response.status} ${response.statusText}`
-    );
+    return response.json() as Promise<WLEDState>;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Connection timeout while updating device ${device.name}`);
+    }
+    throw error;
   }
-
-  return response.json() as Promise<WLEDState>;
 }
 
 /**
