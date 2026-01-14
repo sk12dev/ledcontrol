@@ -136,12 +136,3 @@ export async function migrateLocalStorageToBackend(): Promise<{
   };
 }
 
-/**
- * Check if migration is needed (checks if localStorage has data)
- */
-export function needsMigration(): boolean {
-  const hasIP = !!localStorage.getItem("wled_ip_address");
-  const hasPresets = !!localStorage.getItem("wled_custom_presets");
-  return hasIP || hasPresets;
-}
-

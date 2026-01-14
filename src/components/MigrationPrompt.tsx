@@ -3,9 +3,9 @@
  * Prompts user to migrate localStorage data to backend on first load
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { DialogRoot, DialogBackdrop, DialogPositioner, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogCloseTrigger, Button, Text, VStack, ListRoot, ListItem, Box } from "@chakra-ui/react";
-import { needsMigration, migrateLocalStorageToBackend } from "../utils/migrateToBackend";
+import { migrateLocalStorageToBackend } from "../utils/migrateToBackend";
 
 export function MigrationPrompt() {
   const [showPrompt, setShowPrompt] = useState(false);
@@ -15,12 +15,6 @@ export function MigrationPrompt() {
     presetsMigrated: number;
     errors: string[];
   } | null>(null);
-
-  useEffect(() => {
-    if (needsMigration()) {
-      setShowPrompt(true);
-    }
-  }, []);
 
   const handleMigrate = async () => {
     setIsMigrating(true);

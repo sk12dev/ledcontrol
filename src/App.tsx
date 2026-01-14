@@ -9,7 +9,6 @@ import { PaletteSelector } from "./components/PaletteSelector";
 import { PresetSelector } from "./components/PresetSelector";
 import { CustomPresets } from "./components/CustomPresets";
 import { ConnectionStatus } from "./components/ConnectionStatus";
-import { MigrationPrompt } from "./components/MigrationPrompt";
 import { MultiDeviceManager } from "./components/MultiDeviceManager";
 import { CueList as CueListComponent } from "./components/CueList";
 import { CueBuilder } from "./components/CueBuilder";
@@ -212,7 +211,6 @@ function App() {
 
   return (
     <Box minH="100vh" bg="gray.900" color="white">
-      <MigrationPrompt />
       <Sidebar 
         viewMode={viewMode} 
         onViewModeChange={setViewMode}
