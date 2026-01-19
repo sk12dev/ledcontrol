@@ -7,6 +7,7 @@ import {
   type UpdateCueRequest,
 } from "../api/backendClient";
 import { ColorPicker } from "./ColorPicker";
+import { ColorPresetSelector } from "./ColorPresetSelector";
 
 interface CueStep {
   id?: number;
@@ -482,6 +483,15 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                           }
                           disabled={step.turnOff}
                         />
+                        <div className="mt-2">
+                          <ColorPresetSelector
+                            selectedColor={step.targetColor}
+                            onColorSelect={(color) =>
+                              updateStep(index, { targetColor: color })
+                            }
+                            disabled={step.turnOff}
+                          />
+                        </div>
                         <button
                           onClick={() => updateStep(index, { targetColor: null })}
                           className="text-sm text-gray-400 hover:text-gray-300"
@@ -491,17 +501,28 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                         </button>
                       </div>
                     ) : (
-                      <button
-                        onClick={() =>
-                          updateStep(index, {
-                            targetColor: [255, 255, 255, 0],
-                          })
-                        }
-                        disabled={step.turnOff}
-                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Set Color
-                      </button>
+                      <div className="space-y-2">
+                        <button
+                          onClick={() =>
+                            updateStep(index, {
+                              targetColor: [255, 255, 255, 0],
+                            })
+                          }
+                          disabled={step.turnOff}
+                          className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Set Color
+                        </button>
+                        <div className="mt-2">
+                          <ColorPresetSelector
+                            selectedColor={null}
+                            onColorSelect={(color) =>
+                              updateStep(index, { targetColor: color })
+                            }
+                            disabled={step.turnOff}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div>

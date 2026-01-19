@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { devicesRouter } from "./routes/devices.js";
 import { presetsRouter } from "./routes/presets.js";
+import { colorPresetsRouter } from "./routes/colorPresets.js";
 import { showsRouter } from "./routes/shows.js";
 import { cuesRouter } from "./routes/cues.js";
 import { cueListsRouter } from "./routes/cueLists.js";
@@ -46,6 +47,7 @@ app.get("/health", (req, res) => {
 // API Routes
 app.use("/api/devices", devicesRouter);
 app.use("/api/presets", presetsRouter);
+app.use("/api/color-presets", colorPresetsRouter);
 app.use("/api/shows", showsRouter);
 app.use("/api/cues", cuesRouter);
 app.use("/api/cue-lists", cueListsRouter);

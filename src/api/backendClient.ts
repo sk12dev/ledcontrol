@@ -89,6 +89,36 @@ export interface UpdatePresetRequest {
 }
 
 /**
+ * Color Preset from backend API
+ */
+export interface ColorPreset {
+  id: number;
+  name: string;
+  color: [number, number, number, number];
+  userId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Create color preset request
+ */
+export interface CreateColorPresetRequest {
+  name: string;
+  color: [number, number, number, number];
+  userId?: number;
+}
+
+/**
+ * Update color preset request
+ */
+export interface UpdateColorPresetRequest {
+  name?: string;
+  color?: [number, number, number, number];
+  userId?: number | null;
+}
+
+/**
  * Show from backend API
  */
 export interface Show {
@@ -281,6 +311,74 @@ export const presetsApi = {
    */
   async delete(id: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/presets/${id}`, {
+      method: "DELETE",
+    });
+    return handleResponse<void>(response);
+  },
+};
+
+/**
+ * Color Presets API
+ */
+export const colorPresetsApi = {
+  /**
+   * Get all color presets (optionally filtered by userId)
+   */
+  async getAll(filters?: { userId?: number }): Promise<ColorPreset[]> {
+    const params = new URLSearchParams();
+    if (filters?.userId !== undefined) {
+      params.append("userId", filters.userId.toString());
+    }
+
+    const url = params.toString()
+      ? `${API_BASE_URL}/color-presets?${params.toString()}`
+      : `${API_BASE_URL}/color-presets`;
+
+    const response = await fetch(url);
+    return handleResponse<ColorPreset[]>(response);
+  },
+
+  /**
+   * Get color preset by ID
+   */
+  async getById(id: number): Promise<ColorPreset> {
+    const response = await fetch(`${API_BASE_URL}/color-presets/${id}`);
+    return handleResponse<ColorPreset>(response);
+  },
+
+  /**
+   * Create a new color preset
+   */
+  async create(colorPreset: CreateColorPresetRequest): Promise<ColorPreset> {
+    const response = await fetch(`${API_BASE_URL}/color-presets`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(colorPreset),
+    });
+    return handleResponse<ColorPreset>(response);
+  },
+
+  /**
+   * Update a color preset
+   */
+  async update(id: number, colorPreset: UpdateColorPresetRequest): Promise<ColorPreset> {
+    const response = await fetch(`${API_BASE_URL}/color-presets/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(colorPreset),
+    });
+    return handleResponse<ColorPreset>(response);
+  },
+
+  /**
+   * Delete a color preset
+   */
+  async delete(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/color-presets/${id}`, {
       method: "DELETE",
     });
     return handleResponse<void>(response);

@@ -49,6 +49,19 @@ model Preset {
   @@map("presets")
 }
 
+// Color Preset model - Stores only color values for use in cues
+model ColorPreset {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  color     Int[]    // [R, G, B, W] array - stored as PostgreSQL integer array
+  userId    Int?     @map("user_id") // For future multi-user support
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  @@index([userId])
+  @@map("color_presets")
+}
+
 // User Preferences model (for future use)
 model UserPreference {
   id              Int      @id @default(autoincrement())
