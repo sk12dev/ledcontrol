@@ -4,7 +4,9 @@
  */
 
 import { useState, useEffect } from "react";
-import { Box, Heading, Input, Button, HStack, Text, Grid, GridItem, IconButton } from "@chakra-ui/react";
+import { X } from "lucide-react";
+import { Input } from "@/app/components/ui/input";
+import { Button } from "@/app/components/ui/button";
 import type { WLEDColor } from "../types/wled";
 import { colorPresetsApi, type ColorPreset, type CreateColorPresetRequest } from "../api/backendClient";
 
@@ -105,26 +107,21 @@ export function ColorPresetSelector({
   };
 
   return (
-    <Box w="100%" p={4} bg="gray.800" borderRadius="lg">
-      <Heading as="h4" size="sm" color="gray.300" mb={3}>
+    <div className="w-full p-4 bg-zinc-900 border border-zinc-800 rounded-lg">
+      <h4 className="text-sm font-semibold text-zinc-300 mb-3">
         Color Presets
-      </Heading>
+      </h4>
 
       {/* Save Current Color */}
       {selectedColor && (
-        <Box mb={4} p={3} bg="gray.700" borderRadius="lg">
-          <Text fontSize="xs" color="gray.400" mb={2}>
+        <div className="mb-4 p-3 bg-zinc-800 border border-zinc-700 rounded-lg">
+          <p className="text-xs text-zinc-400 mb-2">
             Save Current Color
-          </Text>
-          <HStack gap={2}>
-            <Box
-              w={8}
-              h={8}
-              borderRadius="md"
-              border="2px"
-              borderColor="gray.600"
-              flexShrink={0}
-              bg={colorToHex(selectedColor)}
+          </p>
+          <div className="flex items-center gap-2">
+            <div
+              className="w-8 h-8 rounded-md border-2 border-zinc-600 flex-shrink-0"
+              style={{ backgroundColor: colorToHex(selectedColor) }}
             />
             <Input
               type="text"
@@ -133,88 +130,75 @@ export function ColorPresetSelector({
               onKeyPress={handleKeyPress}
               disabled={disabled || isSaving}
               placeholder="Enter preset name..."
-              flex={1}
-              bg="gray.600"
-              size="sm"
+              className="flex-1 bg-zinc-800 border-zinc-700 text-white"
             />
             <Button
               onClick={handleSavePreset}
               disabled={disabled || isSaving || !presetName.trim()}
-              colorScheme="blue"
               size="sm"
-              loading={isSaving}
+              className="bg-emerald-600 hover:bg-emerald-700"
             >
-              Save
+              {isSaving ? "Saving..." : "Save"}
             </Button>
-          </HStack>
-        </Box>
+          </div>
+        </div>
       )}
 
       {/* Saved Color Presets */}
       {isLoading ? (
-        <Text fontSize="sm" color="gray.400" textAlign="center" py={4}>
+        <p className="text-sm text-zinc-400 text-center py-4">
           Loading presets...
-        </Text>
+        </p>
       ) : colorPresets.length > 0 ? (
-        <Grid templateColumns="repeat(auto-fill, minmax(150px, 1fr))" gap={2}>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
           {colorPresets.map((preset) => (
-            <GridItem key={preset.id}>
-              <HStack
-                align="center"
-                gap={2}
-                p={2}
-                bg="gray.700"
-                borderRadius="lg"
-                _hover={{ bg: "gray.650" }}
-                transition="background-color 0.2s"
-                cursor={disabled ? "not-allowed" : "pointer"}
+            <div key={preset.id}>
+              <div
+                className={`flex items-center gap-2 p-2 bg-zinc-800 border border-zinc-700 rounded-lg transition-colors ${
+                  disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-zinc-750"
+                }`}
                 onClick={() => !disabled && handleSelectPreset(preset)}
-                opacity={disabled ? 0.5 : 1}
               >
-                <Box
-                  w={10}
-                  h={10}
-                  borderRadius="md"
-                  border="2px"
-                  borderColor="gray.600"
-                  flexShrink={0}
-                  bg={colorToHex(preset.color)}
+                <div
+                  className="w-10 h-10 rounded-md border-2 border-zinc-600 flex-shrink-0"
+                  style={{ backgroundColor: colorToHex(preset.color) }}
                 />
-                <Box flex={1} minW={0}>
-                  <Text color="white" fontWeight="medium" fontSize="sm" truncate>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-medium text-sm truncate">
                     {preset.name}
-                  </Text>
-                  <Text fontSize="xs" color="gray.400">
+                  </p>
+                  <p className="text-xs text-zinc-400">
                     {colorToHex(preset.color)}
-                  </Text>
-                </Box>
-                <IconButton
+                  </p>
+                </div>
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (!disabled) {
-                      handleDeletePreset(preset.id, e);
+                      handleDeletePreset(preset.id, e as any);
                     }
                   }}
                   disabled={disabled || isDeleting === preset.id}
-                  colorScheme="red"
-                  size="xs"
+                  className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-950/20"
                   aria-label={`Delete preset ${preset.name}`}
                 >
-                  <Text fontSize="xs">✕</Text>
-                </IconButton>
-              </HStack>
-            </GridItem>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
           ))}
-        </Grid>
+        </div>
       ) : (
-        <Box textAlign="center" py={4} color="gray.500">
-          <Text fontSize="sm">No color presets saved yet.</Text>
-          <Text fontSize="xs" mt={1}>
+        <div className="text-center py-4 text-zinc-500">
+          <p className="text-sm">No color presets saved yet.</p>
+          <p className="text-xs mt-1">
             Select a color and save it as a preset!
-          </Text>
-        </Box>
+          </p>
+        </div>
       )}
-    </Box>
+    </div>
   );
 }

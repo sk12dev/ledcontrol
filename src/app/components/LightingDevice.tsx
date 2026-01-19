@@ -1,8 +1,9 @@
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, Pencil } from "lucide-react";
 import { Slider } from "@/app/components/ui/slider";
 import { Switch } from "@/app/components/ui/switch";
 import { HexColorPicker } from "react-colorful";
 import { Popover, PopoverContent, PopoverTrigger } from "@/app/components/ui/popover";
+import { Button } from "@/app/components/ui/button";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { setState } from "@/api/wledClient";
 
@@ -15,6 +16,8 @@ interface LightingDeviceProps {
   intensity?: number;
   color?: string;
   isActive?: boolean;
+  onEdit?: () => void;
+  onStateChange?: () => void; // Callback when state is manually changed
 }
 
 // Helper to convert hex color to RGB array
@@ -34,19 +37,20 @@ function percentToBrightness(percent: number): number {
 }
 
 export function LightingDevice({ 
-  deviceId,
   ipAddress,
   name, 
   type, 
   intensity = 75,
   color = "#FF5733",
-  isActive = true 
+  isActive = true,
+  onEdit,
+  onStateChange
 }: LightingDeviceProps) {
   const [deviceIntensity, setDeviceIntensity] = useState(intensity);
   const [deviceColor, setDeviceColor] = useState(color);
   const [deviceActive, setDeviceActive] = useState(isActive);
   const [isUpdating, setIsUpdating] = useState(false);
-  const colorInputTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const colorInputTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Update device when intensity changes
   const handleIntensityChange = useCallback(async (newIntensity: number) => {
@@ -57,12 +61,16 @@ export function LightingDevice({
     try {
       const brightness = percentToBrightness(newIntensity);
       await setState(ipAddress, { bri: brightness });
+      // Trigger state refresh after a short delay to sync with device
+      if (onStateChange) {
+        setTimeout(() => onStateChange(), 500);
+      }
     } catch (error) {
       console.error(`Failed to update intensity for ${name}:`, error);
     } finally {
       setIsUpdating(false);
     }
-  }, [ipAddress, isActive, name]);
+  }, [ipAddress, isActive, name, onStateChange]);
 
   // Update device when color changes
   const handleColorChange = useCallback(async (newColor: string) => {
@@ -78,12 +86,16 @@ export function LightingDevice({
           col: [rgb, [0, 0, 0, 0], [0, 0, 0, 0]],
         }],
       });
+      // Trigger state refresh after a short delay to sync with device
+      if (onStateChange) {
+        setTimeout(() => onStateChange(), 500);
+      }
     } catch (error) {
       console.error(`Failed to update color for ${name}:`, error);
     } finally {
       setIsUpdating(false);
     }
-  }, [ipAddress, isActive, name]);
+  }, [ipAddress, isActive, name, onStateChange]);
 
   // Update device when power state changes
   const handlePowerChange = useCallback(async (newActive: boolean) => {
@@ -93,6 +105,10 @@ export function LightingDevice({
     setIsUpdating(true);
     try {
       await setState(ipAddress, { on: newActive });
+      // Trigger state refresh after a short delay to sync with device
+      if (onStateChange) {
+        setTimeout(() => onStateChange(), 500);
+      }
     } catch (error) {
       console.error(`Failed to update power for ${name}:`, error);
       // Revert on error
@@ -100,20 +116,29 @@ export function LightingDevice({
     } finally {
       setIsUpdating(false);
     }
-  }, [ipAddress, name]);
+  }, [ipAddress, name, onStateChange]);
 
-  // Sync with props when they change
+  // Sync with props when they change (this happens when device state is fetched)
+  // When device state changes externally (e.g., from cue execution), update local state
+  // This ensures the UI reflects the actual device state
   useEffect(() => {
-    setDeviceActive(isActive);
-  }, [isActive]);
+    if (isActive !== deviceActive) {
+      setDeviceActive(isActive);
+    }
+  }, [isActive, deviceActive]);
 
   useEffect(() => {
-    setDeviceIntensity(intensity);
-  }, [intensity]);
+    // Only update if difference is significant to avoid jitter from polling
+    if (Math.abs(intensity - deviceIntensity) > 1) {
+      setDeviceIntensity(intensity);
+    }
+  }, [intensity, deviceIntensity]);
 
   useEffect(() => {
-    setDeviceColor(color);
-  }, [color]);
+    if (color !== deviceColor) {
+      setDeviceColor(color);
+    }
+  }, [color, deviceColor]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -127,19 +152,35 @@ export function LightingDevice({
   return (
     <div className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-4 backdrop-blur-sm hover:border-zinc-700 transition-colors">
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
           <div 
-            className="w-8 h-8 rounded-md flex items-center justify-center" 
+            className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" 
             style={{ backgroundColor: deviceActive ? deviceColor : '#27272a' }}
           >
             <Lightbulb className={`w-5 h-5 ${deviceActive ? 'text-white' : 'text-zinc-600'}`} />
           </div>
-          <div>
-            <h3 className="font-medium text-sm text-white">{name}</h3>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-medium text-sm text-white truncate">{name}</h3>
             <p className="text-xs text-zinc-500">{type}</p>
           </div>
         </div>
-        <Switch checked={deviceActive} onCheckedChange={handlePowerChange} disabled={isUpdating || !ipAddress} />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {onEdit && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 text-zinc-400 hover:text-white hover:bg-zinc-800"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              title="Edit device"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+          )}
+          <Switch checked={deviceActive} onCheckedChange={handlePowerChange} disabled={isUpdating || !ipAddress} />
+        </div>
       </div>
       
       <div className="space-y-3">

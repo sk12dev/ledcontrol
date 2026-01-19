@@ -1,22 +1,64 @@
-import { useState, useMemo } from "react";
-import { Plus, Settings, Save, Zap } from "lucide-react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { Plus, Settings, Save, Zap, AlertTriangle } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/app/components/ui/alert-dialog";
 import { LightingDevice } from "@/app/components/LightingDevice";
 import { CueCard } from "@/app/components/CueCard";
 import { Timeline } from "@/app/components/Timeline";
+import { DeviceModal } from "@/app/components/DeviceModal";
 import { useCues } from "@/hooks/useCues";
 import { useMultiDevice } from "@/hooks/useMultiDevice";
 import { useShows } from "@/hooks/useShows";
 import { useCueLists } from "@/hooks/useCueLists";
+import { type Device, type Cue, type CreateCueRequest, type UpdateCueRequest } from "@/api/backendClient";
+import { setState } from "@/api/wledClient";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/app/components/ui/sheet";
+import { ScrollArea } from "@/app/components/ui/scroll-area";
+import { CueBuilder } from "@/components/CueBuilder";
 
 export default function App() {
   const [showName, setShowName] = useState("Untitled Show");
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [isBlackoutDialogOpen, setIsBlackoutDialogOpen] = useState(false);
+  const [isBlackingOut, setIsBlackingOut] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [lastExecutedCueId, setLastExecutedCueId] = useState<number | null>(null);
+  
+  // Cue drawer state
+  const [isCueDrawerOpen, setIsCueDrawerOpen] = useState(false);
+  const [editingCue, setEditingCue] = useState<Cue | null>(null);
+  const [isCopyMode, setIsCopyMode] = useState(false);
+  const [deleteCueId, setDeleteCueId] = useState<number | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   
   // Use real hooks instead of mock data
-  const { cues, loading: cuesLoading, executeCue, deleteCue, createCue } = useCues();
-  const { devices, getDeviceConnectionStatus, getConnectedDevices, loading: devicesLoading } = useMultiDevice();
+  const { cues, loading: cuesLoading, executeCue, deleteCue, createCue, updateCue, executionStatus } = useCues();
+  const { 
+    devices, 
+    getDeviceConnectionStatus, 
+    getDeviceState,
+    getConnectedDevices, 
+    loading: devicesLoading, 
+    refreshDevices,
+    refreshDeviceStates
+  } = useMultiDevice();
   const { shows, loading: showsLoading } = useShows();
   const { cueLists, loading: cueListsLoading } = useCueLists();
 
@@ -25,9 +67,23 @@ export default function App() {
     return devices.map((device) => {
       const status = getDeviceConnectionStatus(device.id);
       const isConnected = status?.isConnected ?? false;
-      // Get color from device state if available, otherwise default
-      const deviceColor = "#FF6B35"; // Default color, could be enhanced
-      const deviceIntensity = 80; // Default intensity, could be enhanced
+      const deviceState = getDeviceState(device.id);
+      
+      // Convert brightness from 0-255 to 0-100 percentage
+      let deviceIntensity = 0;
+      if (deviceState && isConnected) {
+        deviceIntensity = Math.round((deviceState.brightness / 255) * 100);
+      }
+      
+      // Convert color from [R, G, B, W] to hex string
+      let deviceColor = "#FF6B35"; // Default orange
+      if (deviceState && isConnected && deviceState.color) {
+        const [r, g, b] = deviceState.color;
+        deviceColor = `#${[r, g, b].map(x => {
+          const hex = x.toString(16);
+          return hex.length === 1 ? "0" + hex : hex;
+        }).join("")}`;
+      }
       
       return {
         id: device.id.toString(),
@@ -37,10 +93,10 @@ export default function App() {
         type: "WLED Device", // Could be enhanced with device type
         intensity: deviceIntensity,
         color: deviceColor,
-        isActive: isConnected,
+        isActive: isConnected && deviceState?.isOn === true,
       };
     });
-  }, [devices, getDeviceConnectionStatus]);
+  }, [devices, getDeviceConnectionStatus, getDeviceState]);
 
   // Convert cues to CueCard format
   const cueCards = useMemo(() => {
@@ -92,7 +148,7 @@ export default function App() {
       let currentTime = 0;
       return firstCueList.cueListCues
         ?.sort((a, b) => a.order - b.order)
-        .map((cueListItem, idx) => {
+        .map((cueListItem) => {
           const cue = cues.find(c => c.id === cueListItem.cueId);
           if (!cue) return null;
           
@@ -158,6 +214,220 @@ export default function App() {
   const totalDeviceCount = devices.length;
   const isLoading = cuesLoading || devicesLoading || showsLoading || cueListsLoading;
 
+  // Find running cue name
+  const runningCue = useMemo(() => {
+    if (executionStatus?.isRunning && executionStatus?.cueId) {
+      return cues.find(c => c.id === executionStatus.cueId);
+    }
+    return null;
+  }, [executionStatus, cues]);
+
+  // Find last executed cue (current state)
+  const currentStateCue = useMemo(() => {
+    if (lastExecutedCueId) {
+      return cues.find(c => c.id === lastExecutedCueId);
+    }
+    return null;
+  }, [lastExecutedCueId, cues]);
+
+  // Update elapsed time every second when a cue is running
+  useEffect(() => {
+    if (!executionStatus?.isRunning || !executionStatus?.startTime) {
+      setElapsedTime(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - executionStatus.startTime!) / 1000);
+      setElapsedTime(elapsed);
+    }, 1000);
+
+    // Update immediately
+    setElapsedTime(Math.floor((Date.now() - executionStatus.startTime) / 1000));
+
+    return () => clearInterval(interval);
+  }, [executionStatus?.isRunning, executionStatus?.startTime]);
+
+  // Track last executed cue when execution finishes
+  const prevExecutionStatus = useRef<{ isRunning: boolean; cueId: number | null } | null>(null);
+  useEffect(() => {
+    const currentIsRunning = executionStatus?.isRunning ?? false;
+    const currentCueId = executionStatus?.cueId ?? null;
+    const prevIsRunning = prevExecutionStatus.current?.isRunning ?? false;
+    const prevCueId = prevExecutionStatus.current?.cueId ?? null;
+
+    // Detect transition from running to not running
+    if (prevIsRunning && !currentIsRunning && prevCueId) {
+      // Cue just finished executing, save it as the last executed
+      setLastExecutedCueId(prevCueId);
+    }
+
+    // Update ref for next comparison
+    prevExecutionStatus.current = {
+      isRunning: currentIsRunning,
+      cueId: currentCueId,
+    };
+  }, [executionStatus?.isRunning, executionStatus?.cueId]);
+
+  const handleAddDevice = () => {
+    setEditingDevice(null);
+    setIsDeviceModalOpen(true);
+  };
+
+  const handleEditDevice = (device: Device) => {
+    setEditingDevice(device);
+    setIsDeviceModalOpen(true);
+  };
+
+  const handleCloseDeviceModal = () => {
+    setIsDeviceModalOpen(false);
+    setEditingDevice(null);
+  };
+
+  const handleDeviceSave = async () => {
+    await refreshDevices();
+  };
+
+  const handleDeviceDelete = async () => {
+    await refreshDevices();
+  };
+
+  // Cue drawer handlers
+  const handleNewCue = () => {
+    setEditingCue(null);
+    setIsCopyMode(false);
+    setIsCueDrawerOpen(true);
+  };
+
+  const handleEditCue = (cueId: number) => {
+    const cue = cues.find(c => c.id === cueId);
+    if (cue) {
+      setEditingCue(cue);
+      setIsCopyMode(false);
+      setIsCueDrawerOpen(true);
+    }
+  };
+
+  const handleCopyCue = (cueId: number) => {
+    const cue = cues.find(c => c.id === cueId);
+    if (cue) {
+      setEditingCue(cue);
+      setIsCopyMode(true);
+      setIsCueDrawerOpen(true);
+    }
+  };
+
+  const handleDeleteCueClick = (cueId: number) => {
+    setDeleteCueId(cueId);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteCue = async () => {
+    if (deleteCueId !== null) {
+      try {
+        await deleteCue(deleteCueId);
+        setIsDeleteDialogOpen(false);
+        setDeleteCueId(null);
+      } catch (err) {
+        console.error("Failed to delete cue:", err);
+      }
+    }
+  };
+
+  const handleSaveCue = async (cueData: CreateCueRequest | UpdateCueRequest) => {
+    try {
+      if (editingCue && !isCopyMode) {
+        // Update existing cue
+        await updateCue(editingCue.id, cueData as UpdateCueRequest);
+      } else {
+        // Create new cue (either from scratch or as a copy)
+        await createCue(cueData as CreateCueRequest);
+      }
+      setIsCueDrawerOpen(false);
+      setEditingCue(null);
+      setIsCopyMode(false);
+    } catch (err) {
+      console.error("Failed to save cue:", err);
+      throw err; // Re-throw so CueBuilder can handle the error
+    }
+  };
+
+  const handleCancelCue = () => {
+    setIsCueDrawerOpen(false);
+    setEditingCue(null);
+    setIsCopyMode(false);
+  };
+
+  // Get current show ID for new cues
+  const currentShow = useMemo(() => {
+    return shows.find(s => s.name === showName);
+  }, [shows, showName]);
+
+  // Prepare cue for CueBuilder (handles copy mode)
+  // For copy mode, we need to modify the name and remove step IDs so they're treated as new steps
+  const cueForBuilder = useMemo(() => {
+    if (!editingCue) return undefined;
+    
+    if (isCopyMode) {
+      // Create a copy of the cue with modified name and step IDs removed
+      // The handleSaveCue will treat this as a new cue (not an update)
+      // CueBuilder will map cueSteps and if id is undefined, it won't be included in save
+      return {
+        ...editingCue,
+        name: `${editingCue.name} (Copy)`,
+        cueSteps: editingCue.cueSteps.map(({ id, ...step }) => ({
+          ...step,
+          // Remove id so CueBuilder treats these as new steps
+        })) as any,
+      } as Cue;
+    }
+    
+    return editingCue;
+  }, [editingCue, isCopyMode]);
+
+  const handleEmergencyBlackout = async () => {
+    const connectedDevices = getConnectedDevices();
+    
+    if (connectedDevices.length === 0) {
+      alert("No connected devices to turn off.");
+      return;
+    }
+
+    setIsBlackoutDialogOpen(true);
+  };
+
+  const confirmBlackout = async () => {
+    setIsBlackingOut(true);
+    const connectedDevices = getConnectedDevices();
+
+    try {
+      // Turn off all connected devices in parallel
+      await Promise.all(
+        connectedDevices.map(async (device) => {
+          try {
+            await setState(device.ipAddress, { on: false });
+          } catch (error) {
+            console.error(`Failed to turn off device ${device.name} (${device.ipAddress}):`, error);
+            // Continue with other devices even if one fails
+          }
+        })
+      );
+
+      // Refresh device states after blackout
+      setTimeout(() => {
+        refreshDeviceStates();
+      }, 500);
+
+      setIsBlackoutDialogOpen(false);
+    } catch (error) {
+      console.error("Error during emergency blackout:", error);
+      // Keep dialog open on error so user can see what happened
+      // The error is logged to console for debugging
+    } finally {
+      setIsBlackingOut(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white dark">
       {/* Header */}
@@ -202,7 +472,12 @@ export default function App() {
           <div className="col-span-3">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Lighting Devices</h2>
-              <Button size="sm" variant="outline" className="border-zinc-800 text-zinc-400 hover:text-white">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="border-zinc-800 text-zinc-400 hover:text-white"
+                onClick={handleAddDevice}
+              >
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
@@ -210,9 +485,17 @@ export default function App() {
               {isLoading ? (
                 <div className="text-center py-8 text-zinc-500 text-sm">Loading devices...</div>
               ) : lightingDevices.length > 0 ? (
-                lightingDevices.map((device) => (
-                  <LightingDevice key={device.id} {...device} />
-                ))
+                lightingDevices.map((device) => {
+                  const fullDevice = devices.find(d => d.id === device.deviceId);
+                  return (
+                    <LightingDevice 
+                      key={device.id} 
+                      {...device}
+                      onEdit={fullDevice ? () => handleEditDevice(fullDevice) : undefined}
+                      onStateChange={() => refreshDeviceStates()}
+                    />
+                  );
+                })
               ) : (
                 <div className="text-center py-8 text-zinc-500 text-sm">
                   No devices configured. Click + to add a device.
@@ -220,6 +503,15 @@ export default function App() {
               )}
             </div>
           </div>
+
+          {/* Device Modal */}
+          <DeviceModal
+            device={editingDevice}
+            isOpen={isDeviceModalOpen}
+            onClose={handleCloseDeviceModal}
+            onSave={handleDeviceSave}
+            onDelete={handleDeviceDelete}
+          />
 
           {/* Center Panel - Timeline & Controls */}
           <div className="col-span-6 space-y-6">
@@ -234,7 +526,11 @@ export default function App() {
               <TabsContent value="cues" className="mt-4 space-y-3">
                 <div className="flex items-center justify-between mb-4">
                   <p className="text-sm text-zinc-400">{cueCards.length} cues available</p>
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                  <Button 
+                    size="sm" 
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    onClick={handleNewCue}
+                  >
                     <Plus className="w-4 h-4 mr-2" />
                     New Cue
                   </Button>
@@ -247,20 +543,21 @@ export default function App() {
                       <CueCard 
                         key={cue.id} 
                         {...cue}
-                        onPlay={() => executeCue(parseInt(cue.id)).catch(err => console.error("Failed to execute cue:", err))}
-                        onEdit={() => {
-                          // TODO: Open cue editor
-                          console.log("Edit cue:", cue.id);
-                        }}
-                        onCopy={() => {
-                          // TODO: Copy cue
-                          console.log("Copy cue:", cue.id);
-                        }}
-                        onDelete={() => {
-                          if (confirm(`Are you sure you want to delete "${cue.name}"?`)) {
-                            deleteCue(parseInt(cue.id)).catch(err => console.error("Failed to delete cue:", err));
+                        onPlay={async () => {
+                          try {
+                            await executeCue(parseInt(cue.id));
+                            // Refresh device states after cue execution
+                            // Wait a bit for the cue to start executing
+                            setTimeout(() => {
+                              refreshDeviceStates();
+                            }, 500);
+                          } catch (err) {
+                            console.error("Failed to execute cue:", err);
                           }
                         }}
+                        onEdit={() => handleEditCue(parseInt(cue.id))}
+                        onCopy={() => handleCopyCue(parseInt(cue.id))}
+                        onDelete={() => handleDeleteCueClick(parseInt(cue.id))}
                       />
                     ))}
                   </div>
@@ -307,12 +604,46 @@ export default function App() {
                 </div>
 
                 <div className="pt-4 border-t border-zinc-800">
-                  <h3 className="text-sm font-medium mb-3">Active Cue</h3>
+                  <h3 className="text-sm font-medium mb-3">Running Cue</h3>
                   <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">No active cue</span>
-                    </div>
-                    <p className="text-xs text-zinc-400">Select a cue to activate</p>
+                    {runningCue && executionStatus?.isRunning ? (
+                      <>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-white">{runningCue.name}</span>
+                        </div>
+                        <p className="text-xs text-zinc-400">
+                          {elapsedTime}s elapsed
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">No running cue</span>
+                        </div>
+                        <p className="text-xs text-zinc-400">Select a cue to activate</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-zinc-800">
+                  <h3 className="text-sm font-medium mb-3">Current State</h3>
+                  <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
+                    {currentStateCue ? (
+                      <>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-white">{currentStateCue.name}</span>
+                        </div>
+                        <p className="text-xs text-zinc-400">Last executed cue</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">No state set</span>
+                        </div>
+                        <p className="text-xs text-zinc-400">Execute a cue to set state</p>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -344,15 +675,127 @@ export default function App() {
                 </div>
 
                 <div className="pt-4 border-t border-zinc-800">
-                  <Button className="w-full bg-red-600 hover:bg-red-700">
-                    Emergency Blackout
+                  <Button 
+                    className="w-full bg-red-600 hover:bg-red-700"
+                    onClick={handleEmergencyBlackout}
+                    disabled={connectedCount === 0 || isBlackingOut}
+                  >
+                    {isBlackingOut ? "Turning Off..." : "Emergency Blackout"}
                   </Button>
                 </div>
+
+                {/* Emergency Blackout Confirmation Dialog */}
+                <AlertDialog open={isBlackoutDialogOpen} onOpenChange={setIsBlackoutDialogOpen}>
+                  <AlertDialogContent className="bg-zinc-900 border-zinc-800">
+                    <AlertDialogHeader>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
+                          <AlertTriangle className="w-5 h-5 text-red-500" />
+                        </div>
+                        <div>
+                          <AlertDialogTitle className="text-white">
+                            Emergency Blackout
+                          </AlertDialogTitle>
+                          <AlertDialogDescription className="text-zinc-400 mt-1">
+                            This will immediately power off all {connectedCount} connected lighting device{connectedCount !== 1 ? 's' : ''}.
+                          </AlertDialogDescription>
+                        </div>
+                      </div>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="gap-3">
+                      <AlertDialogCancel 
+                        disabled={isBlackingOut}
+                        className="bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700"
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={confirmBlackout}
+                        disabled={isBlackingOut}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        {isBlackingOut ? "Turning Off..." : "Turn Off All Devices"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                {/* Delete Cue Confirmation Dialog */}
+                <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                  <AlertDialogContent className="bg-zinc-900 border-zinc-800">
+                    <AlertDialogHeader>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
+                          <AlertTriangle className="w-5 h-5 text-red-500" />
+                        </div>
+                        <div>
+                          <AlertDialogTitle className="text-white">
+                            Delete Cue
+                          </AlertDialogTitle>
+                          <AlertDialogDescription className="text-zinc-400 mt-1">
+                            {deleteCueId !== null && (
+                              <>Are you sure you want to delete "{cues.find(c => c.id === deleteCueId)?.name || 'this cue'}"? This action cannot be undone.</>
+                            )}
+                          </AlertDialogDescription>
+                        </div>
+                      </div>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="gap-3">
+                      <AlertDialogCancel 
+                        onClick={() => {
+                          setIsDeleteDialogOpen(false);
+                          setDeleteCueId(null);
+                        }}
+                        className="bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700"
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={confirmDeleteCue}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Cue Drawer */}
+      <Sheet open={isCueDrawerOpen} onOpenChange={setIsCueDrawerOpen}>
+        <SheetContent 
+          side="right" 
+          className="w-[50vw] min-w-[50vw] max-w-[50vw] sm:w-[50vw] sm:min-w-[50vw] sm:max-w-[50vw] bg-zinc-900 border-zinc-800 p-0 flex flex-col"
+          style={{ 
+            height: '100vh',
+            maxHeight: '100vh',
+            minHeight: '100vh',
+            top: 0,
+            bottom: 0
+          }}
+        >
+          <ScrollArea 
+            className="flex-1 min-h-0" 
+            style={{ 
+              height: '100%',
+              flex: '1 1 0%'
+            }}
+          >
+            <div className="p-6">
+              <CueBuilder
+                cue={cueForBuilder}
+                showId={currentShow?.id}
+                onSave={handleSaveCue}
+                onCancel={handleCancelCue}
+              />
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

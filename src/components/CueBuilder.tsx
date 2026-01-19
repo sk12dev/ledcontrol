@@ -288,15 +288,15 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       : 0;
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 max-w-6xl mx-auto">
+    <div className="bg-zinc-900 rounded-lg">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">
+        <h2 className="text-2xl font-bold text-white">
           {cue ? "Edit Cue" : "Create Cue"}
         </h2>
         <div className="flex gap-2">
           <button
             onClick={onCancel}
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-white"
           >
             Cancel
           </button>
@@ -304,7 +304,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
             <button
               onClick={handleTest}
               disabled={testing || saving}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-600 disabled:cursor-not-allowed rounded text-white"
             >
               {testing ? "Testing..." : "Test Cue"}
             </button>
@@ -312,7 +312,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           <button
             onClick={handleSave}
             disabled={saving || testing}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-600 disabled:cursor-not-allowed rounded text-white"
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -320,7 +320,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-900 border border-red-500 rounded text-red-200">
+        <div className="mb-4 p-4 bg-red-950 border border-red-700 rounded text-red-200">
           {error}
         </div>
       )}
@@ -328,32 +328,32 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       {/* Cue Metadata */}
       <div className="mb-6 space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-1">Name *</label>
+          <label className="block text-sm font-medium mb-1 text-zinc-300">Name *</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600"
+            className="w-full px-3 py-2 bg-zinc-800 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             placeholder="Enter cue name..."
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
+          <label className="block text-sm font-medium mb-1 text-zinc-300">Description</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600"
+            className="w-full px-3 py-2 bg-zinc-800 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             placeholder="Enter cue description..."
             rows={2}
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Show *</label>
+          <label className="block text-sm font-medium mb-1 text-zinc-300">Show *</label>
           <select
             value={selectedShowId ?? ""}
             onChange={(e) => setSelectedShowId(parseInt(e.target.value) || null)}
             disabled={!!cue && !!cue.showId} // Disable if editing existing cue with showId
-            className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-3 py-2 bg-zinc-800 text-white rounded border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500"
             required
           >
             <option value="">Select a show...</option>
@@ -364,7 +364,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
             ))}
           </select>
           {cue && cue.showId && (
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-zinc-400 mt-1">
               Cue is associated with this show. To change the show, create a new cue.
             </p>
           )}
@@ -374,17 +374,17 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       {/* Steps */}
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold">Steps</h3>
+          <h3 className="text-xl font-semibold text-white">Steps</h3>
           <button
             onClick={addStep}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded text-white"
           >
             Add Step
           </button>
         </div>
 
         {steps.length === 0 ? (
-          <p className="text-gray-400 text-center py-8">
+          <p className="text-zinc-400 text-center py-8">
             No steps yet. Click "Add Step" to create one.
           </p>
         ) : (
@@ -392,10 +392,10 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
             {steps.map((step, index) => (
               <div
                 key={index}
-                className="p-4 bg-gray-700 rounded-lg border border-gray-600"
+                className="p-4 bg-zinc-800 rounded-lg border border-zinc-700"
               >
                 <div className="flex justify-between items-start mb-4">
-                  <h4 className="text-lg font-semibold">Step {step.order + 1}</h4>
+                  <h4 className="text-lg font-semibold text-white">Step {step.order + 1}</h4>
                   <div className="flex gap-2">
                     <button
                       onClick={() => duplicateStep(index)}
@@ -414,7 +414,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-zinc-300">
                       Start Delay (seconds)
                     </label>
                     <input
@@ -427,11 +427,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                       }
                       min="0"
                       step="0.1"
-                      className="w-full px-3 py-2 bg-gray-600 text-white rounded border border-gray-500"
+                      className="w-full px-3 py-2 bg-zinc-900 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-zinc-300">
                       Transition Duration (seconds)
                     </label>
                     <input
@@ -444,7 +444,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                       }
                       min="0"
                       step="0.1"
-                      className="w-full px-3 py-2 bg-gray-600 text-white rounded border border-gray-500"
+                      className="w-full px-3 py-2 bg-zinc-900 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                   </div>
                 </div>
@@ -458,20 +458,20 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                       onChange={(e) =>
                         updateStep(index, { turnOff: e.target.checked })
                       }
-                      className="w-4 h-4 text-red-600 bg-gray-700 border-gray-600 rounded focus:ring-red-500"
+                      className="w-4 h-4 text-red-600 bg-zinc-800 border-zinc-700 rounded focus:ring-red-500"
                     />
                     <span className="text-sm font-medium text-red-400">
                       Turn Device Off
                     </span>
                   </label>
-                  <p className="text-xs text-gray-400 mt-1 ml-6">
+                  <p className="text-xs text-zinc-400 mt-1 ml-6">
                     When enabled, the device will be turned off instead of setting color/brightness
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-zinc-300">
                       Target Color
                     </label>
                     {step.targetColor ? (
@@ -494,7 +494,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                         </div>
                         <button
                           onClick={() => updateStep(index, { targetColor: null })}
-                          className="text-sm text-gray-400 hover:text-gray-300"
+                          className="text-sm text-zinc-400 hover:text-zinc-300"
                           disabled={step.turnOff}
                         >
                           Clear (brightness only)
@@ -509,7 +509,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                             })
                           }
                           disabled={step.turnOff}
-                          className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Set Color
                         </button>
@@ -526,7 +526,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-zinc-300">
                       Target Brightness (1-255)
                     </label>
                     {step.targetBrightness !== null ? (
@@ -545,7 +545,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                           className="w-full disabled:opacity-50"
                         />
                         <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400">
+                          <span className="text-sm text-zinc-400">
                             {step.targetBrightness}
                           </span>
                           <button
@@ -574,11 +574,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">
+                  <label className="block text-sm font-medium mb-2 text-zinc-300">
                     Target Devices *
                   </label>
                   {connectedDevices.length === 0 ? (
-                    <p className="text-gray-400 text-sm">
+                    <p className="text-zinc-400 text-sm">
                       No connected devices available
                     </p>
                   ) : (
@@ -589,7 +589,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                           className={`px-3 py-2 rounded cursor-pointer border ${
                             step.deviceIds.includes(device.id)
                               ? "bg-blue-600 border-blue-500 text-white"
-                              : "bg-gray-600 border-gray-500 text-gray-300"
+                              : "bg-zinc-800 border-zinc-700 text-zinc-300"
                           }`}
                         >
                           <input
@@ -613,8 +613,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       {/* Timeline Visualization */}
       {steps.length > 0 && (
         <div className="mt-6">
-          <h3 className="text-lg font-semibold mb-4">Timeline</h3>
-          <div className="relative bg-gray-700 rounded p-4 h-32 overflow-x-auto">
+          <h3 className="text-lg font-semibold mb-4 text-white">Timeline</h3>
+          <div className="relative bg-zinc-800 border border-zinc-700 rounded p-4 h-32 overflow-x-auto">
             <div className="relative" style={{ width: `${Math.max(maxTime * 100, 600)}px` }}>
               {steps.map((step, index) => (
                 <div
@@ -628,7 +628,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                   <div className="px-2 py-1 bg-blue-600 text-white text-xs rounded">
                     Step {step.order + 1}
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
+                  <div className="text-xs text-zinc-400 mt-1">
                     {step.timeOffset}s - {step.timeOffset + step.transitionDuration}s
                   </div>
                 </div>
@@ -637,7 +637,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
               {Array.from({ length: Math.ceil(maxTime) + 1 }).map((_, i) => (
                 <div
                   key={i}
-                  className="absolute top-0 border-l border-gray-500 text-xs text-gray-400"
+                  className="absolute top-0 border-l border-zinc-700 text-xs text-zinc-400"
                   style={{ left: `${(i / maxTime) * 100}%` }}
                 >
                   <span className="ml-1">{i}s</span>
