@@ -347,28 +347,31 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
             rows={2}
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1 text-zinc-300">Show *</label>
-          <select
-            value={selectedShowId ?? ""}
-            onChange={(e) => setSelectedShowId(parseInt(e.target.value) || null)}
-            disabled={!!cue && !!cue.showId} // Disable if editing existing cue with showId
-            className="w-full px-3 py-2 bg-zinc-800 text-white rounded border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            required
-          >
-            <option value="">Select a show...</option>
-            {shows.map((show) => (
-              <option key={show.id} value={show.id}>
-                {show.name}
-              </option>
-            ))}
-          </select>
-          {cue && cue.showId && (
-            <p className="text-xs text-zinc-400 mt-1">
-              Cue is associated with this show. To change the show, create a new cue.
-            </p>
-          )}
-        </div>
+        {/* Show selector - hide if showId is provided via props (already in show context) */}
+        {!propShowId && (
+          <div>
+            <label className="block text-sm font-medium mb-1 text-zinc-300">Show *</label>
+            <select
+              value={selectedShowId ?? ""}
+              onChange={(e) => setSelectedShowId(parseInt(e.target.value) || null)}
+              disabled={!!cue && !!cue.showId} // Disable if editing existing cue with showId
+              className="w-full px-3 py-2 bg-zinc-800 text-white rounded border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              required
+            >
+              <option value="">Select a show...</option>
+              {shows.map((show) => (
+                <option key={show.id} value={show.id}>
+                  {show.name}
+                </option>
+              ))}
+            </select>
+            {cue && cue.showId && (
+              <p className="text-xs text-zinc-400 mt-1">
+                Cue is associated with this show. To change the show, create a new cue.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Steps */}

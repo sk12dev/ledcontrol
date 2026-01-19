@@ -23,7 +23,7 @@ interface UseCuesReturn {
   refreshCues: () => Promise<void>;
 }
 
-export function useCues(userId?: number): UseCuesReturn {
+export function useCues(userId?: number, showId?: number): UseCuesReturn {
   const [cues, setCues] = useState<Cue[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +33,10 @@ export function useCues(userId?: number): UseCuesReturn {
     try {
       setLoading(true);
       setError(null);
-      const data = await cuesApi.getAll(userId ? { userId } : undefined);
+      const filters: { userId?: number; showId?: number } = {};
+      if (userId !== undefined) filters.userId = userId;
+      if (showId !== undefined) filters.showId = showId;
+      const data = await cuesApi.getAll(Object.keys(filters).length > 0 ? filters : undefined);
       setCues(data);
     } catch (err) {
       const errorMessage =
@@ -43,7 +46,7 @@ export function useCues(userId?: number): UseCuesReturn {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, showId]);
 
   const createCue = useCallback(async (cue: CreateCueRequest): Promise<Cue> => {
     try {

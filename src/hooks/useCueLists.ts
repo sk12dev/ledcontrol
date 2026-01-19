@@ -20,7 +20,7 @@ interface UseCueListsReturn {
   refreshCueLists: () => Promise<void>;
 }
 
-export function useCueLists(userId?: number): UseCueListsReturn {
+export function useCueLists(userId?: number, showId?: number): UseCueListsReturn {
   const [cueLists, setCueLists] = useState<CueList[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +29,10 @@ export function useCueLists(userId?: number): UseCueListsReturn {
     try {
       setLoading(true);
       setError(null);
-      const data = await cueListsApi.getAll(userId ? { userId } : undefined);
+      const filters: { userId?: number; showId?: number } = {};
+      if (userId !== undefined) filters.userId = userId;
+      if (showId !== undefined) filters.showId = showId;
+      const data = await cueListsApi.getAll(Object.keys(filters).length > 0 ? filters : undefined);
       setCueLists(data);
     } catch (err) {
       const errorMessage =
@@ -39,7 +42,7 @@ export function useCueLists(userId?: number): UseCueListsReturn {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, showId]);
 
   const createCueList = useCallback(
     async (cueList: CreateCueListRequest): Promise<CueList> => {

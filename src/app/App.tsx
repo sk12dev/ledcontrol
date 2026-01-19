@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { Plus, Settings, Save, Zap, AlertTriangle } from "lucide-react";
+import { useParams, useNavigate } from "react-router-dom";
+import { Plus, Settings, Save, Zap, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
-import { Input } from "@/app/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import {
   AlertDialog,
@@ -33,7 +33,10 @@ import { ScrollArea } from "@/app/components/ui/scroll-area";
 import { CueBuilder } from "@/components/CueBuilder";
 
 export default function App() {
-  const [showName, setShowName] = useState("Untitled Show");
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const showId = id ? parseInt(id, 10) : undefined;
+  
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [isBlackoutDialogOpen, setIsBlackoutDialogOpen] = useState(false);
@@ -49,7 +52,7 @@ export default function App() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   
   // Use real hooks instead of mock data
-  const { cues, loading: cuesLoading, executeCue, deleteCue, createCue, updateCue, executionStatus } = useCues();
+  const { cues, loading: cuesLoading, executeCue, deleteCue, createCue, updateCue, executionStatus } = useCues(undefined, showId);
   const { 
     devices, 
     getDeviceConnectionStatus, 
@@ -60,7 +63,25 @@ export default function App() {
     refreshDeviceStates
   } = useMultiDevice();
   const { shows, loading: showsLoading } = useShows();
-  const { cueLists, loading: cueListsLoading } = useCueLists();
+  const { cueLists, loading: cueListsLoading } = useCueLists(undefined, showId);
+
+  // Get current show data
+  const currentShow = useMemo(() => {
+    return showId ? shows.find(s => s.id === showId) : null;
+  }, [shows, showId]);
+
+  // Redirect to shows list if showId is invalid or not found
+  useEffect(() => {
+    if (!showsLoading && showId !== undefined) {
+      if (isNaN(showId) || !currentShow) {
+        // Invalid showId or show not found, redirect to shows list
+        navigate("/shows", { replace: true });
+      } else {
+        // Save to localStorage when valid show is loaded
+        localStorage.setItem("selectedShowId", showId.toString());
+      }
+    }
+  }, [showsLoading, showId, currentShow, navigate]);
 
   // Convert devices to LightingDevice format
   const lightingDevices = useMemo(() => {
@@ -140,8 +161,8 @@ export default function App() {
 
   // Convert cue lists or shows to timeline format
   const timelineCues = useMemo(() => {
-    // If we have cue lists, use the first one to generate timeline
-    if (cueLists.length > 0) {
+    // If we have cue lists for this show, use the first one to generate timeline
+    if (currentShow && cueLists.length > 0) {
       const firstCueList = cueLists[0];
       // Cue lists have cues in order - convert them to timeline format
       // For now, use a simple sequential layout (could be enhanced with actual timing)
@@ -172,12 +193,10 @@ export default function App() {
         .filter((tc): tc is { id: string; name: string; startTime: number; duration: number; color: string } => tc !== null) || [];
     }
     
-    // If no cue lists, use cues from the current show (if showName matches a show)
-    const currentShow = shows.find(s => s.name === showName);
+    // If no cue lists, use cues from the current show
     if (currentShow && cues.length > 0) {
-      const showCues = cues.filter(c => c.showId === currentShow.id);
       let currentTime = 0;
-      return showCues.map((cue) => {
+      return cues.map((cue) => {
         const duration = cue.cueSteps && cue.cueSteps.length > 0
           ? Math.max(...cue.cueSteps.map(s => Number(s.timeOffset) + Number(s.transitionDuration)))
           : 5;
@@ -195,15 +214,9 @@ export default function App() {
       });
     }
     
-    // Fallback: use shows as timeline items
-    return shows.map((show, idx) => ({
-      id: show.id.toString(),
-      name: show.name,
-      startTime: idx * 30,
-      duration: 30,
-      color: "#4A6FA5",
-    }));
-  }, [cueLists, cues, shows, showName]);
+    // Fallback: empty timeline
+    return [];
+  }, [cueLists, cues, currentShow]);
 
   const totalDuration = timelineCues.length > 0
     ? Math.max(...timelineCues.map(tc => tc.startTime + tc.duration))
@@ -358,11 +371,6 @@ export default function App() {
     setIsCopyMode(false);
   };
 
-  // Get current show ID for new cues
-  const currentShow = useMemo(() => {
-    return shows.find(s => s.name === showName);
-  }, [shows, showName]);
-
   // Prepare cue for CueBuilder (handles copy mode)
   // For copy mode, we need to modify the name and remove step IDs so they're treated as new steps
   const cueForBuilder = useMemo(() => {
@@ -428,6 +436,17 @@ export default function App() {
     }
   };
 
+  // Show loading or error state if show is not found
+  if (!showsLoading && showId !== undefined && !currentShow) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-zinc-400">Show not found. Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white dark">
       {/* Header */}
@@ -435,30 +454,32 @@ export default function App() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-zinc-400 hover:text-white"
+                onClick={() => navigate("/shows", { state: { from: "/show" } })}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Shows
+              </Button>
+              <div className="h-8 w-px bg-zinc-800" />
               <div className="flex items-center gap-2">
                 <div className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-lg flex items-center justify-center">
                   <Zap className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="font-semibold text-lg">LightControl Pro</h1>
+                  <h1 className="font-semibold text-lg">
+                    {currentShow?.name || "Loading..."}
+                  </h1>
                   <p className="text-xs text-zinc-500">Theatre Lighting System</p>
                 </div>
               </div>
-              <div className="h-8 w-px bg-zinc-800" />
-              <Input 
-                value={showName}
-                onChange={(e) => setShowName(e.target.value)}
-                className="w-72 bg-zinc-900 border-zinc-800 text-sm"
-              />
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white">
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
-              </Button>
-              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
-                <Save className="w-4 h-4 mr-2" />
-                Save Show
               </Button>
             </div>
           </div>

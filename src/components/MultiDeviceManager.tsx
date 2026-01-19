@@ -1,7 +1,7 @@
 import { useMultiDevice } from "../hooks/useMultiDevice";
 import { presetsApi, devicesApi, type Preset, type Device } from "../api/backendClient";
 import { useState, useEffect } from "react";
-import { DeviceFormModal } from "./DeviceFormModal";
+import { DeviceModal } from "@/app/components/DeviceModal";
 
 interface MultiDeviceManagerProps {
   onDeviceSelect?: (deviceIds: number[]) => void;
@@ -293,7 +293,7 @@ export function MultiDeviceManager({
       </div>
 
       {/* Device Form Modal */}
-      <DeviceFormModal
+      <DeviceModal
         device={editingDevice}
         isOpen={isModalOpen}
         onClose={handleCloseModal}
