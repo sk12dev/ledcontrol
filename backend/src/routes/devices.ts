@@ -3,7 +3,9 @@ import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 import type { Request, Response } from "express";
 import { connectionManager } from "../services/connectionManager.js";
+// @ts-ignore - File outside rootDir, excluded from compilation but available at runtime
 import type * as Prisma from "../../../src/generated/prisma/internal/prismaNamespace.js";
+// @ts-ignore - File outside rootDir, excluded from compilation but available at runtime
 import { JsonNull } from "../../../src/generated/prisma/internal/prismaNamespace.js";
 import type * as runtime from "@prisma/client/runtime/client";
 

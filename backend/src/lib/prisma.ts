@@ -7,6 +7,7 @@ if (!process.env.DATABASE_URL) {
 
 // Import the generated PrismaClient
 // Note: Using relative path from backend/src/lib to src/generated/prisma
+// @ts-ignore - File outside rootDir, excluded from compilation but available at runtime
 import { PrismaClient } from "../../../src/generated/prisma/client.js";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
