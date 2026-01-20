@@ -20,7 +20,7 @@ import { type Show } from "../api/backendClient";
 export function ShowList() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { shows, loading, error, createShow, updateShow, deleteShow, refreshShows } = useShows();
+  const { shows, loading, error, deleteShow, refreshShows } = useShows();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingShow, setEditingShow] = useState<Show | null>(null);
   const [deleteShowId, setDeleteShowId] = useState<number | null>(null);

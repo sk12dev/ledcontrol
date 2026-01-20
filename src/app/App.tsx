@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, Settings, Save, Zap, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Plus, Settings, Zap, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import {
@@ -26,8 +26,6 @@ import { setState } from "@/api/wledClient";
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
-  SheetTitle,
 } from "@/app/components/ui/sheet";
 import { ScrollArea } from "@/app/components/ui/scroll-area";
 import { CueBuilder } from "@/components/CueBuilder";
