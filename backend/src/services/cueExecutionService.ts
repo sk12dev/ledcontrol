@@ -20,6 +20,11 @@ interface CueStepWithDevices {
   startColor: number[]; // Empty array means use current
   startBrightness: number | null;
   turnOff: boolean;
+  useWledEffect: boolean;
+  wledEffectId: number | null;
+  wledEffectSpeed: number | null;
+  wledEffectIntensity: number | null;
+  wledPaletteId: number | null;
   devices: number[];
 }
 
@@ -99,6 +104,11 @@ class CueExecutionService {
       startColor: step.startColor || [],
       startBrightness: step.startBrightness,
       turnOff: step.turnOff ?? false,
+      useWledEffect: step.useWledEffect ?? false,
+      wledEffectId: step.wledEffectId ?? null,
+      wledEffectSpeed: step.wledEffectSpeed ?? null,
+      wledEffectIntensity: step.wledEffectIntensity ?? null,
+      wledPaletteId: step.wledPaletteId ?? null,
       devices: step.cueStepDevices.map((csd) => csd.deviceId),
     }));
 
@@ -184,24 +194,53 @@ class CueExecutionService {
       this.transitionFrames.delete(deviceId);
     }
 
-    // If turnOff is true, turn the device off directly
+    // If turnOff is true, turn the device off directly (executeStep already waited for timeOffset)
     if (step.turnOff) {
-      // Wait until timeOffset
-      const startTimeout = setTimeout(async () => {
-        this.activeTimeouts.delete(startTimeout);
-        try {
-          await updateDeviceState(deviceId, {
-            on: false,
-            transition: Math.round(step.transitionDuration * 10), // WLED transition is in 100ms units
-          });
-        } catch (error) {
-          console.error(
-            `Failed to turn off device ${deviceId}:`,
-            error
-          );
-        }
-      }, step.timeOffset * 1000);
-      this.activeTimeouts.add(startTimeout);
+      try {
+        await updateDeviceState(deviceId, {
+          on: false,
+          transition: Math.round(step.transitionDuration * 10), // WLED transition is in 100ms units
+        });
+      } catch (error) {
+        console.error(
+          `Failed to turn off device ${deviceId}:`,
+          error
+        );
+      }
+      return;
+    }
+
+    // If useWledEffect is true, set WLED effect on the device (executeStep already waited for timeOffset)
+    if (step.useWledEffect && step.wledEffectId != null) {
+      const primaryColor: [number, number, number, number] =
+        step.targetColor && step.targetColor.length >= 4
+          ? [step.targetColor[0], step.targetColor[1], step.targetColor[2], step.targetColor[3] ?? 0]
+          : [255, 255, 255, 0];
+      const segmentUpdate = {
+        id: 0,
+        fx: step.wledEffectId,
+        sx: step.wledEffectSpeed ?? 128,
+        ix: step.wledEffectIntensity ?? 128,
+        pal: step.wledPaletteId ?? 0,
+        col: [
+          primaryColor,
+          [0, 0, 0, 0] as [number, number, number, number],
+          [0, 0, 0, 0] as [number, number, number, number],
+        ] as [[number, number, number, number], [number, number, number, number], [number, number, number, number]],
+      };
+      try {
+        await updateDeviceState(deviceId, {
+          on: true,
+          bri: step.targetBrightness ?? 255,
+          transition: Math.round(step.transitionDuration * 10),
+          seg: [segmentUpdate],
+        });
+      } catch (error) {
+        console.error(
+          `Failed to set effect on device ${deviceId}:`,
+          error
+        );
+      }
       return;
     }
 

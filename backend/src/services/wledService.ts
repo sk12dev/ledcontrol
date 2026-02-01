@@ -6,6 +6,18 @@
 import { prisma } from "../lib/prisma.js";
 
 /**
+ * WLED segment update for effects (supports fx, sx, ix, pal, col)
+ */
+export interface WLEDSegmentUpdate {
+  id?: number;
+  col?: [[number, number, number, number], [number, number, number, number], [number, number, number, number]];
+  fx?: number;
+  sx?: number;
+  ix?: number;
+  pal?: number;
+}
+
+/**
  * WLED State Update interface
  */
 interface WLEDStateUpdate {
@@ -13,9 +25,23 @@ interface WLEDStateUpdate {
   bri?: number;
   seg?: Array<{
     id?: number;
-    col?: [[number, number, number, number]];
+    col?: [[number, number, number, number]] | [[number, number, number, number], [number, number, number, number], [number, number, number, number]];
+    fx?: number;
+    sx?: number;
+    ix?: number;
+    pal?: number;
   }>;
   transition?: number;
+}
+
+/**
+ * WLED full JSON response (state + info + effects + palettes)
+ */
+export interface WLEDJsonResponse {
+  state?: unknown;
+  info?: { fxcount?: number; palcount?: number; [key: string]: unknown };
+  effects?: string[];
+  palettes?: string[];
 }
 
 /**
@@ -151,13 +177,24 @@ export async function applyPresetToDevice(
     throw new Error(`Device with id ${deviceId} not found`);
   }
 
-  // Apply preset color and brightness
+  // Apply preset color and brightness (fx: 0 = Solid)
+  const primaryColor: [number, number, number, number] = [
+    preset.color[0],
+    preset.color[1],
+    preset.color[2],
+    preset.color[3],
+  ];
   const state: WLEDStateUpdate = {
     bri: preset.brightness,
     seg: [
       {
         id: 0,
-        col: [[preset.color[0], preset.color[1], preset.color[2], preset.color[3]]],
+        fx: 0, // Solid - clear any previous effect
+        col: [
+          primaryColor,
+          [0, 0, 0, 0] as [number, number, number, number],
+          [0, 0, 0, 0] as [number, number, number, number],
+        ],
       },
     ],
   };
@@ -184,6 +221,44 @@ export async function applyPresetToDevices(
   return Promise.all(
     deviceIds.map((deviceId) => applyPresetToDevice(deviceId, presetId))
   );
+}
+
+/**
+ * Fetches full WLED JSON response (state, info, effects, palettes) from a device
+ */
+export async function fetchWledJson(deviceId: number): Promise<WLEDJsonResponse> {
+  const device = await prisma.device.findUnique({
+    where: { id: deviceId },
+  });
+
+  if (!device) {
+    throw new Error(`Device with id ${deviceId} not found`);
+  }
+
+  const baseURL = getBaseURL(device.ipAddress);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(baseURL, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch WLED JSON from device ${device.name}: ${response.status} ${response.statusText}`
+      );
+    }
+
+    return (await response.json()) as WLEDJsonResponse;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Connection timeout while fetching from device ${device.name}`);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -235,7 +310,8 @@ export async function checkDeviceConnection(deviceId: number): Promise<boolean> 
 }
 
 /**
- * Updates device state with specific color and brightness values
+ * Updates device state with specific color and brightness values.
+ * Explicitly sets fx: 0 (Solid) so any previous effect is cleared.
  */
 export async function updateDeviceColorAndBrightness(
   deviceId: number,
@@ -243,12 +319,23 @@ export async function updateDeviceColorAndBrightness(
   brightness: number,
   transition?: number
 ): Promise<WLEDState> {
+  const primaryColor: [number, number, number, number] = [
+    color[0],
+    color[1],
+    color[2],
+    color[3],
+  ];
   const state: WLEDStateUpdate = {
     bri: brightness,
     seg: [
       {
         id: 0,
-        col: [[color[0], color[1], color[2], color[3]]],
+        fx: 0, // Solid - ensures we clear any previous effect
+        col: [
+          primaryColor,
+          [0, 0, 0, 0] as [number, number, number, number],
+          [0, 0, 0, 0] as [number, number, number, number],
+        ],
       },
     ],
   };

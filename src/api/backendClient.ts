@@ -244,7 +244,25 @@ export const devicesApi = {
     });
     return handleResponse<Device>(response);
   },
+
+  /**
+   * Get WLED full JSON (state, info, effects, palettes) from device
+   */
+  async getWledJson(id: number): Promise<WLEDJsonResponse> {
+    const response = await fetch(`${API_BASE_URL}/devices/${id}/wled/json`);
+    return handleResponse<WLEDJsonResponse>(response);
+  },
 };
+
+/**
+ * WLED full JSON response from device proxy
+ */
+export interface WLEDJsonResponse {
+  state?: unknown;
+  info?: { fxcount?: number; palcount?: number; [key: string]: unknown };
+  effects?: string[];
+  palettes?: string[];
+}
 
 /**
  * Presets API
@@ -412,6 +430,11 @@ export interface CueStep {
   startColor: [number, number, number, number] | null;
   startBrightness: number | null;
   turnOff: boolean;
+  useWledEffect: boolean;
+  wledEffectId: number | null;
+  wledEffectSpeed: number | null;
+  wledEffectIntensity: number | null;
+  wledPaletteId: number | null;
   cueStepDevices: CueStepDevice[];
 }
 
@@ -440,7 +463,7 @@ export interface Cue {
 export interface CreateCueRequest {
   name: string;
   description?: string | null;
-  showId: number; // Required - cue must belong to a show
+  showId: number;
   userId?: number;
   steps: Array<{
     order: number;
@@ -451,6 +474,11 @@ export interface CreateCueRequest {
     startColor?: [number, number, number, number] | null;
     startBrightness?: number | null;
     turnOff?: boolean;
+    useWledEffect?: boolean;
+    wledEffectId?: number | null;
+    wledEffectSpeed?: number | null;
+    wledEffectIntensity?: number | null;
+    wledPaletteId?: number | null;
     deviceIds: number[];
   }>;
 }
@@ -461,7 +489,7 @@ export interface CreateCueRequest {
 export interface UpdateCueRequest {
   name?: string;
   description?: string | null;
-  showId?: number; // Optional - allow changing show
+  showId?: number;
   userId?: number;
   steps?: Array<{
     id?: number;
@@ -473,6 +501,11 @@ export interface UpdateCueRequest {
     startColor?: [number, number, number, number] | null;
     startBrightness?: number | null;
     turnOff?: boolean;
+    useWledEffect?: boolean;
+    wledEffectId?: number | null;
+    wledEffectSpeed?: number | null;
+    wledEffectIntensity?: number | null;
+    wledPaletteId?: number | null;
     deviceIds: number[];
   }>;
 }

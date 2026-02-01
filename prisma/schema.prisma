@@ -128,6 +128,11 @@ model CueStep {
   startColor        Int[]    @default([]) @map("start_color") // Empty array = use current device state
   startBrightness   Int?     @map("start_brightness") // Optional, null = use current device state
   turnOff           Boolean  @default(false) @map("turn_off") // If true, turn device off instead of setting color/brightness
+  useWledEffect     Boolean  @default(false) @map("use_wled_effect") // If true, set WLED effect instead of color interpolation
+  wledEffectId      Int?     @map("wled_effect_id") // 0 to fxcount-1
+  wledEffectSpeed   Int?     @map("wled_effect_speed") // sx: 0-255
+  wledEffectIntensity Int?   @map("wled_effect_intensity") // ix: 0-255
+  wledPaletteId     Int?     @map("wled_palette_id") // pal: 0 to palcount-1
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp
 

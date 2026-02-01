@@ -7,60 +7,55 @@ import { cueExecutionService } from "../services/cueExecutionService.js";
 export const cuesRouter = Router();
 
 // Validation schemas
+const stepSchema = z
+  .object({
+    order: z.number().int().min(0),
+    timeOffset: z.coerce.number().min(0),
+    transitionDuration: z.coerce.number().min(0),
+    targetColor: z.array(z.number().int().min(0).max(255)).length(4).optional().nullable(),
+    targetBrightness: z.number().int().min(1).max(255).optional().nullable(),
+    startColor: z
+      .union([
+        z.array(z.number().int().min(0).max(255)).length(0),
+        z.array(z.number().int().min(0).max(255)).length(4),
+      ])
+      .optional(),
+    startBrightness: z.number().int().min(1).max(255).optional().nullable(),
+    turnOff: z.boolean().optional().default(false),
+    useWledEffect: z.boolean().optional().default(false),
+    wledEffectId: z.number().int().min(0).max(255).optional().nullable(),
+    wledEffectSpeed: z.number().int().min(0).max(255).optional().nullable(),
+    wledEffectIntensity: z.number().int().min(0).max(255).optional().nullable(),
+    wledPaletteId: z.number().int().min(0).optional().nullable(),
+    deviceIds: z.array(z.number().int().positive()).min(1),
+  })
+  .refine(
+    (step) => {
+      if (step.turnOff) return true;
+      if (step.useWledEffect) return step.wledEffectId != null;
+      return step.targetColor != null || step.targetBrightness != null;
+    },
+    { message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)" }
+  );
+
 const createCueSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional().nullable(),
-  showId: z.number().int().positive(), // Required - cue must belong to a show
+  showId: z.number().int().positive(),
   userId: z.number().int().positive().optional(),
-  steps: z
-    .array(
-      z.object({
-        order: z.number().int().min(0),
-        timeOffset: z.coerce.number().min(0), // Coerce string to number
-        transitionDuration: z.coerce.number().min(0), // Coerce string to number
-        targetColor: z.array(z.number().int().min(0).max(255)).length(4).optional().nullable(),
-        targetBrightness: z.number().int().min(1).max(255).optional().nullable(),
-        startColor: z
-          .union([
-            z.array(z.number().int().min(0).max(255)).length(0), // Empty array
-            z.array(z.number().int().min(0).max(255)).length(4), // 4-element array
-          ])
-          .optional(),
-        startBrightness: z.number().int().min(1).max(255).optional().nullable(),
-        turnOff: z.boolean().optional().default(false),
-        deviceIds: z.array(z.number().int().positive()).min(1),
-      })
-    )
-    .min(1),
+  steps: z.array(stepSchema).min(1),
+});
+
+const updateStepSchema = stepSchema.extend({
+  id: z.number().int().positive().optional(),
 });
 
 const updateCueSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional().nullable(),
-  showId: z.number().int().positive().optional(), // Optional - allow changing show
+  showId: z.number().int().positive().optional(),
   userId: z.number().int().positive().optional(),
-  steps: z
-    .array(
-      z.object({
-        id: z.number().int().positive().optional(), // For existing steps
-        order: z.number().int().min(0),
-        timeOffset: z.coerce.number().min(0), // Coerce string to number
-        transitionDuration: z.coerce.number().min(0), // Coerce string to number
-        targetColor: z.array(z.number().int().min(0).max(255)).length(4).optional().nullable(),
-        targetBrightness: z.number().int().min(1).max(255).optional().nullable(),
-        startColor: z
-          .union([
-            z.array(z.number().int().min(0).max(255)).length(0), // Empty array
-            z.array(z.number().int().min(0).max(255)).length(4), // 4-element array
-          ])
-          .optional(),
-        startBrightness: z.number().int().min(1).max(255).optional().nullable(),
-        turnOff: z.boolean().optional().default(false),
-        deviceIds: z.array(z.number().int().positive()).min(1),
-      })
-    )
-    .min(1)
-    .optional(),
+  steps: z.array(updateStepSchema).min(1).optional(),
 });
 
 // GET /api/cues - List all cues
@@ -216,6 +211,11 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
             startColor: step.startColor || [],
             startBrightness: step.startBrightness ?? null,
             turnOff: step.turnOff ?? false,
+            useWledEffect: step.useWledEffect ?? false,
+            wledEffectId: step.wledEffectId ?? null,
+            wledEffectSpeed: step.wledEffectSpeed ?? null,
+            wledEffectIntensity: step.wledEffectIntensity ?? null,
+            wledPaletteId: step.wledPaletteId ?? null,
             cueStepDevices: {
               create: step.deviceIds.map((deviceId) => ({
                 deviceId,
@@ -333,6 +333,11 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
           startColor: number[];
           startBrightness: number | null;
           turnOff: boolean;
+          useWledEffect: boolean;
+          wledEffectId: number | null;
+          wledEffectSpeed: number | null;
+          wledEffectIntensity: number | null;
+          wledPaletteId: number | null;
           cueStepDevices: {
             create: Array<{ deviceId: number }>;
           };
@@ -351,12 +356,17 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
         create: validatedData.steps.map((step) => ({
           order: step.order,
           timeOffset: step.timeOffset,
-            transitionDuration: step.transitionDuration,
-            targetColor: step.targetColor || [],
-            targetBrightness: step.targetBrightness ?? null,
-            startColor: step.startColor || [],
-            startBrightness: step.startBrightness ?? null,
-            turnOff: step.turnOff ?? false,
+          transitionDuration: step.transitionDuration,
+          targetColor: step.targetColor || [],
+          targetBrightness: step.targetBrightness ?? null,
+          startColor: step.startColor || [],
+          startBrightness: step.startBrightness ?? null,
+          turnOff: step.turnOff ?? false,
+          useWledEffect: step.useWledEffect ?? false,
+          wledEffectId: step.wledEffectId ?? null,
+          wledEffectSpeed: step.wledEffectSpeed ?? null,
+          wledEffectIntensity: step.wledEffectIntensity ?? null,
+          wledPaletteId: step.wledPaletteId ?? null,
           cueStepDevices: {
             create: step.deviceIds.map((deviceId) => ({
               deviceId,

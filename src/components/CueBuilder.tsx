@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useMultiDevice } from "../hooks/useMultiDevice";
 import { useShows } from "../hooks/useShows";
 import {
   type Cue,
   type CreateCueRequest,
   type UpdateCueRequest,
+  devicesApi,
 } from "../api/backendClient";
 import { ColorPicker } from "./ColorPicker";
 import { ColorPresetSelector } from "./ColorPresetSelector";
@@ -19,6 +20,11 @@ interface CueStep {
   startColor: [number, number, number, number] | null | []; // Empty array or null means use current
   startBrightness: number | null;
   turnOff: boolean;
+  useWledEffect: boolean;
+  wledEffectId: number | null;
+  wledEffectSpeed: number | null;
+  wledEffectIntensity: number | null;
+  wledPaletteId: number | null;
   deviceIds: number[];
 }
 
@@ -50,6 +56,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         startColor: step.startColor || null,
         startBrightness: step.startBrightness,
         turnOff: step.turnOff ?? false,
+        useWledEffect: step.useWledEffect ?? false,
+        wledEffectId: step.wledEffectId ?? null,
+        wledEffectSpeed: step.wledEffectSpeed ?? 128,
+        wledEffectIntensity: step.wledEffectIntensity ?? 128,
+        wledPaletteId: step.wledPaletteId ?? 0,
         deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
       }));
     }
@@ -58,6 +69,35 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wledDataByDevice, setWledDataByDevice] = useState<
+    Map<number, { effects: string[]; palettes: string[] }>
+  >(new Map());
+  const [wledLoading, setWledLoading] = useState(false);
+  const wledLoadingRef = useRef<Set<number>>(new Set());
+
+  const loadWledData = useCallback(async (deviceId: number) => {
+    if (wledLoadingRef.current.has(deviceId)) return;
+    wledLoadingRef.current.add(deviceId);
+    setWledLoading(true);
+    try {
+      const json = await devicesApi.getWledJson(deviceId);
+      const effects = (json.effects ?? []).filter(
+        (name) => name !== "RSVD" && name !== "-"
+      );
+      const palettes = json.palettes ?? [];
+      setWledDataByDevice((prev) => {
+        const next = new Map(prev);
+        next.set(deviceId, { effects, palettes });
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to load WLED effects:", err);
+      setError(err instanceof Error ? err.message : "Failed to load effects from device");
+    } finally {
+      wledLoadingRef.current.delete(deviceId);
+      setWledLoading(false);
+    }
+  }, []);
 
   const connectedDevices = devices.filter(
     (device) => getDeviceConnectionStatus(device.id)?.isConnected
@@ -73,6 +113,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       startColor: null,
       startBrightness: null,
       turnOff: false,
+      useWledEffect: false,
+      wledEffectId: null,
+      wledEffectSpeed: 128,
+      wledEffectIntensity: 128,
+      wledPaletteId: 0,
       deviceIds: [],
     };
     setSteps([...steps, newStep]);
@@ -89,7 +134,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   const duplicateStep = (index: number) => {
     const stepToDuplicate = steps[index];
     const duplicatedStep: CueStep = {
-      // Remove id since this is a new step
       order: stepToDuplicate.order + 1,
       timeOffset: stepToDuplicate.timeOffset + stepToDuplicate.transitionDuration,
       transitionDuration: stepToDuplicate.transitionDuration,
@@ -104,6 +148,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         : null,
       startBrightness: stepToDuplicate.startBrightness,
       turnOff: stepToDuplicate.turnOff,
+      useWledEffect: stepToDuplicate.useWledEffect,
+      wledEffectId: stepToDuplicate.wledEffectId,
+      wledEffectSpeed: stepToDuplicate.wledEffectSpeed,
+      wledEffectIntensity: stepToDuplicate.wledEffectIntensity,
+      wledPaletteId: stepToDuplicate.wledPaletteId,
       deviceIds: [...stepToDuplicate.deviceIds],
     };
     
@@ -161,9 +210,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         setError(`Step ${step.order + 1} must have at least one device selected`);
         return;
       }
-      if (!step.targetColor && step.targetBrightness === null) {
+      const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
+      const hasEffect = step.useWledEffect && step.wledEffectId != null;
+      if (!step.turnOff && !hasColorOrBrightness && !hasEffect) {
         setError(
-          `Step ${step.order + 1} must have either a target color or brightness`
+          `Step ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
         );
         return;
       }
@@ -189,9 +240,14 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           targetBrightness: step.targetBrightness,
           startColor: step.startColor && step.startColor.length === 4 
             ? (step.startColor as [number, number, number, number])
-            : undefined, // Backend expects undefined or empty array, not null
+            : undefined,
           startBrightness: step.startBrightness,
           turnOff: step.turnOff,
+          useWledEffect: step.useWledEffect,
+          wledEffectId: step.wledEffectId,
+          wledEffectSpeed: step.wledEffectSpeed,
+          wledEffectIntensity: step.wledEffectIntensity,
+          wledPaletteId: step.wledPaletteId,
           deviceIds: step.deviceIds,
         })),
       };
@@ -233,9 +289,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         setError(`Step ${step.order + 1} must have at least one device selected`);
         return;
       }
-      if (!step.turnOff && !step.targetColor && step.targetBrightness === null) {
+      const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
+      const hasEffect = step.useWledEffect && step.wledEffectId != null;
+      if (!step.turnOff && !hasColorOrBrightness && !hasEffect) {
         setError(
-          `Step ${step.order + 1} must have either a target color, brightness, or be set to turn off`
+          `Step ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
         );
         return;
       }
@@ -261,9 +319,14 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           targetBrightness: step.targetBrightness,
           startColor: step.startColor && step.startColor.length === 4 
             ? (step.startColor as [number, number, number, number])
-            : undefined, // Backend expects undefined or empty array, not null
+            : undefined,
           startBrightness: step.startBrightness,
           turnOff: step.turnOff,
+          useWledEffect: step.useWledEffect,
+          wledEffectId: step.wledEffectId,
+          wledEffectSpeed: step.wledEffectSpeed,
+          wledEffectIntensity: step.wledEffectIntensity,
+          wledPaletteId: step.wledPaletteId,
           deviceIds: step.deviceIds,
         })),
       };
@@ -459,7 +522,10 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                       type="checkbox"
                       checked={step.turnOff}
                       onChange={(e) =>
-                        updateStep(index, { turnOff: e.target.checked })
+                        updateStep(index, {
+                          turnOff: e.target.checked,
+                          useWledEffect: e.target.checked ? false : step.useWledEffect,
+                        })
                       }
                       className="w-4 h-4 text-red-600 bg-zinc-800 border-zinc-700 rounded focus:ring-red-500"
                     />
@@ -471,6 +537,150 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                     When enabled, the device will be turned off instead of setting color/brightness
                   </p>
                 </div>
+
+                {/* Use WLED Effect Option */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={step.useWledEffect}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        if (checked && step.deviceIds.length > 0) {
+                          loadWledData(step.deviceIds[0]);
+                        }
+                        updateStep(index, {
+                          useWledEffect: checked,
+                          turnOff: checked ? false : step.turnOff,
+                          wledEffectId: checked && step.wledEffectId == null ? 0 : step.wledEffectId,
+                        });
+                      }}
+                      disabled={step.turnOff}
+                      className="w-4 h-4 text-emerald-600 bg-zinc-800 border-zinc-700 rounded focus:ring-emerald-500 disabled:opacity-50"
+                    />
+                    <span className="text-sm font-medium text-emerald-400">
+                      Use WLED Effect
+                    </span>
+                  </label>
+                  <p className="text-xs text-zinc-400 mt-1 ml-6">
+                    When enabled, use a WLED built-in effect instead of solid color (loads from first selected device)
+                  </p>
+                </div>
+
+                {/* WLED Effect Controls - shown when useWledEffect is true */}
+                {step.useWledEffect && !step.turnOff && (
+                  <div className="mb-4 p-4 bg-zinc-900 rounded-lg border border-zinc-700 space-y-4">
+                    <h5 className="text-sm font-medium text-zinc-300">Effect Settings</h5>
+                    {step.deviceIds.length === 0 ? (
+                      <p className="text-zinc-400 text-sm">
+                        Select at least one device to load effects
+                      </p>
+                    ) : (
+                      <>
+                        {(() => {
+                          const deviceId = step.deviceIds[0];
+                          const wledData = wledDataByDevice.get(deviceId);
+                          if (!wledData && !wledLoading) {
+                            loadWledData(deviceId);
+                          }
+                          return (
+                            <>
+                              <div>
+                                <label className="block text-sm font-medium mb-1 text-zinc-300">
+                                  Effect
+                                </label>
+                                <select
+                                  value={step.wledEffectId ?? 0}
+                                  onChange={(e) =>
+                                    updateStep(index, {
+                                      wledEffectId: parseInt(e.target.value, 10),
+                                    })
+                                  }
+                                  className="w-full px-3 py-2 bg-zinc-800 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                  disabled={wledLoading}
+                                >
+                                  {wledLoading ? (
+                                    <option>Loading effects...</option>
+                                  ) : wledData ? (
+                                    wledData.effects.map((name, idx) => (
+                                      <option key={idx} value={idx}>
+                                        {name}
+                                      </option>
+                                    ))
+                                  ) : (
+                                    <option value={0}>Select effect</option>
+                                  )}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-1 text-zinc-300">
+                                  Speed (sx) 0-255
+                                </label>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="255"
+                                  value={step.wledEffectSpeed ?? 128}
+                                  onChange={(e) =>
+                                    updateStep(index, {
+                                      wledEffectSpeed: parseInt(e.target.value, 10),
+                                    })
+                                  }
+                                  className="w-full"
+                                />
+                                <span className="text-sm text-zinc-400">
+                                  {step.wledEffectSpeed ?? 128}
+                                </span>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium mb-1 text-zinc-300">
+                                  Intensity (ix) 0-255
+                                </label>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="255"
+                                  value={step.wledEffectIntensity ?? 128}
+                                  onChange={(e) =>
+                                    updateStep(index, {
+                                      wledEffectIntensity: parseInt(e.target.value, 10),
+                                    })
+                                  }
+                                  className="w-full"
+                                />
+                                <span className="text-sm text-zinc-400">
+                                  {step.wledEffectIntensity ?? 128}
+                                </span>
+                              </div>
+                              {wledData && wledData.palettes.length > 0 && (
+                                <div>
+                                  <label className="block text-sm font-medium mb-1 text-zinc-300">
+                                    Palette
+                                  </label>
+                                  <select
+                                    value={step.wledPaletteId ?? 0}
+                                    onChange={(e) =>
+                                      updateStep(index, {
+                                        wledPaletteId: parseInt(e.target.value, 10),
+                                      })
+                                    }
+                                    className="w-full px-3 py-2 bg-zinc-800 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                  >
+                                    {wledData.palettes.map((name, idx) => (
+                                      <option key={idx} value={idx}>
+                                        {name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>

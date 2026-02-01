@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 import type { Request, Response } from "express";
 import { connectionManager } from "../services/connectionManager.js";
+import { fetchWledJson } from "../services/wledService.js";
 // @ts-ignore - File outside rootDir, excluded from compilation but available at runtime
 import type * as Prisma from "../../../src/generated/prisma/internal/prismaNamespace.js";
 // @ts-ignore - File outside rootDir, excluded from compilation but available at runtime
@@ -88,6 +89,28 @@ devicesRouter.get("/connection-status", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching connection statuses:", error);
     res.status(500).json({ error: "Failed to fetch connection statuses" });
+  }
+});
+
+// GET /api/devices/:id/wled/json - Proxy WLED full JSON (state, info, effects, palettes)
+// NOTE: Must be defined before /:id route
+devicesRouter.get("/:id/wled/json", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid device ID" });
+    }
+
+    const wledJson = await fetchWledJson(id);
+    res.json(wledJson);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not found")) {
+      return res.status(404).json({ error: "Device not found" });
+    }
+    console.error("Error fetching WLED JSON:", error);
+    res.status(502).json({
+      error: error instanceof Error ? error.message : "Failed to fetch WLED data from device",
+    });
   }
 });
 
