@@ -473,6 +473,21 @@ export default function App() {
                   <p className="text-xs text-zinc-500">Theatre Lighting System</p>
                 </div>
               </div>
+              <div className="h-8 w-px bg-zinc-800" />
+              <nav className="flex items-center gap-1">
+                <span className="text-white font-medium text-sm px-2">
+                  Workspace
+                </span>
+                <span className="text-zinc-600 px-1">|</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-zinc-400 hover:text-white"
+                  onClick={() => showId && navigate(`/show/${showId}/cue-lists`)}
+                >
+                  Cue Lists
+                </Button>
+              </nav>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white">

@@ -4,10 +4,11 @@ import { useState } from "react";
 import type { CueList } from "../api/backendClient";
 
 interface CueListsProps {
+  showId?: number;
   onEdit?: (cueListId: number) => void;
 }
 
-export function CueLists({ onEdit }: CueListsProps) {
+export function CueLists({ showId, onEdit }: CueListsProps) {
   const {
     cueLists,
     loading,
@@ -16,7 +17,7 @@ export function CueLists({ onEdit }: CueListsProps) {
     stepForward,
     stepBackward,
     goTo,
-  } = useCueLists();
+  } = useCueLists(undefined, showId);
 
   const { cues } = useCues();
   const [deletingId, setDeletingId] = useState<number | null>(null);
