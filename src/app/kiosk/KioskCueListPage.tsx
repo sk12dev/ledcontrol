@@ -12,6 +12,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/app/components/ui/sheet";
+import { ScrollArea } from "@/app/components/ui/scroll-area";
 import { useCueLists } from "@/hooks/useCueLists";
 import { useMultiDevice } from "@/hooks/useMultiDevice";
 import { setState } from "@/api/wledClient";
@@ -39,6 +41,7 @@ export default function KioskCueListPage() {
     error,
     stepForward,
     stepBackward,
+    goTo,
   } = useCueLists(undefined, showId);
 
   const { getConnectedDevices, refreshDeviceStates } = useMultiDevice();
@@ -51,6 +54,7 @@ export default function KioskCueListPage() {
   const [stepping, setStepping] = useState(false);
   const [isBlackoutDialogOpen, setIsBlackoutDialogOpen] = useState(false);
   const [isBlackingOut, setIsBlackingOut] = useState(false);
+  const [isGoToDrawerOpen, setIsGoToDrawerOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && showId !== undefined && cueListId !== undefined) {
@@ -91,6 +95,19 @@ export default function KioskCueListPage() {
       return;
     }
     setIsBlackoutDialogOpen(true);
+  };
+
+  const handleGoToCue = async (position: number) => {
+    if (!cueListId || stepping) return;
+    setStepping(true);
+    try {
+      await goTo(cueListId, position);
+      setIsGoToDrawerOpen(false);
+    } catch (err) {
+      console.error("Failed to go to cue:", err);
+    } finally {
+      setStepping(false);
+    }
   };
 
   const confirmBlackout = async () => {
@@ -139,8 +156,7 @@ export default function KioskCueListPage() {
         <div className="text-center">
           <p className="text-red-400 mb-4 text-lg">Error: {error}</p>
           <Button
-            variant="outline"
-            className="min-h-[48px] px-6 text-base"
+            className="min-h-[48px] px-6 text-base bg-zinc-700 text-white border border-zinc-600 hover:bg-zinc-600"
             onClick={() => showId && navigate(`/kiosk/show/${showId}`)}
           >
             Back to cue lists
@@ -168,7 +184,7 @@ export default function KioskCueListPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-zinc-400 hover:text-white min-h-[48px] min-w-[48px] px-4 text-base touch-manipulation shrink-0"
+                className="bg-zinc-800 text-white hover:bg-zinc-700 hover:text-white min-h-[48px] min-w-[48px] px-4 text-base touch-manipulation shrink-0"
                 onClick={() => showId !== undefined && navigate(`/kiosk/show/${showId}`)}
               >
                 <ArrowLeft className="w-5 h-5 mr-2" />
@@ -179,16 +195,64 @@ export default function KioskCueListPage() {
                 {cueList?.name ?? "Cue list"}
               </h1>
             </div>
-            <Button
-              className="bg-red-600 hover:bg-red-700 min-h-[48px] px-4 text-base touch-manipulation shrink-0"
-              onClick={handleBlackout}
-              disabled={connectedCount === 0 || isBlackingOut}
-            >
-              {isBlackingOut ? "Turning Off..." : "Blackout"}
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                className="min-h-[48px] px-4 text-base touch-manipulation bg-zinc-700 text-white border border-zinc-600 hover:bg-zinc-500 hover:border-zinc-500 active:bg-zinc-600 transition-colors"
+                onClick={() => setIsGoToDrawerOpen(true)}
+                disabled={!cueList || totalCues === 0 || stepping}
+              >
+                Go To
+              </Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 min-h-[48px] px-4 text-base touch-manipulation"
+                onClick={handleBlackout}
+                disabled={connectedCount === 0 || isBlackingOut}
+              >
+                {isBlackingOut ? "Turning Off..." : "Blackout"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Go To cue list drawer - from bottom */}
+      <Sheet open={isGoToDrawerOpen} onOpenChange={setIsGoToDrawerOpen}>
+        <SheetContent
+          side="bottom"
+          className="h-[70vh] max-h-[70vh] flex flex-col gap-0 border-t border-zinc-800 bg-zinc-900 p-0"
+        >
+          <SheetHeader className="border-b border-zinc-800 px-4 py-4 shrink-0">
+            <SheetTitle className="text-white text-lg">Go to cue</SheetTitle>
+          </SheetHeader>
+          <ScrollArea className="flex-1 min-h-0 px-4 py-4">
+            <div className="flex flex-col gap-2 pb-4">
+              {cueList?.cueListCues?.map((cueItem, index) => {
+                const isActive = index === currentPosition;
+                const cueName = cueItem.cue?.name ?? `Cue ${index + 1}`;
+                return (
+                  <button
+                    key={cueItem.id}
+                    type="button"
+                    onClick={() => handleGoToCue(index)}
+                    disabled={stepping}
+                    className={`
+                      w-full rounded-lg border-2 px-4 py-3 text-left text-base font-medium transition-colors touch-manipulation min-h-[48px]
+                      ${isActive
+                        ? "border-emerald-500 bg-emerald-500/20 text-white"
+                        : "border-zinc-700 bg-zinc-800 text-zinc-200 hover:border-zinc-600 hover:bg-zinc-700"
+                      }
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                    `}
+                  >
+                    <span className="mr-2 text-zinc-500">{index + 1}.</span>
+                    {cueName}
+                  </button>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
 
       {/* Blackout confirmation dialog */}
       <AlertDialog open={isBlackoutDialogOpen} onOpenChange={setIsBlackoutDialogOpen}>
@@ -248,8 +312,7 @@ export default function KioskCueListPage() {
             <div className="flex items-center gap-4 sm:gap-8 w-full max-w-2xl justify-center flex-wrap">
               <Button
                 size="lg"
-                variant="outline"
-                className="flex-1 min-h-[80px] min-w-[160px] border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800 touch-manipulation disabled:opacity-50 h-auto py-3"
+                className="flex-1 min-h-[80px] min-w-[160px] bg-zinc-700 text-white border border-zinc-600 hover:bg-zinc-500 hover:border-zinc-500 active:bg-zinc-600 touch-manipulation disabled:opacity-50 h-auto py-3 transition-colors"
                 onClick={handlePrevious}
                 disabled={!canGoBack || stepping}
               >

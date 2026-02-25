@@ -58,7 +58,7 @@ export default function KioskCueListsPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-zinc-400 hover:text-white min-h-[48px] min-w-[48px] px-4 text-base touch-manipulation"
+              className="bg-zinc-800 text-white hover:bg-zinc-700 hover:text-white min-h-[48px] min-w-[48px] px-4 text-base touch-manipulation"
               onClick={() => navigate("/kiosk")}
             >
               <ArrowLeft className="w-5 h-5 mr-2" />

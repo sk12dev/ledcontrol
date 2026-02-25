@@ -33,8 +33,7 @@ export default function KioskShowsPage() {
           <p className="text-red-400 mb-4 text-lg">Error: {error}</p>
           <Button
             onClick={refreshShows}
-            variant="outline"
-            className="min-h-[48px] min-w-[48px] px-6 text-base"
+            className="min-h-[48px] min-w-[48px] px-6 text-base bg-zinc-700 text-white border border-zinc-600 hover:bg-zinc-600"
           >
             Retry
           </Button>
