@@ -15,7 +15,6 @@ import {
 } from "@/app/components/ui/alert-dialog";
 import { LightingDevice } from "@/app/components/LightingDevice";
 import { CueCard } from "@/app/components/CueCard";
-import { Timeline } from "@/app/components/Timeline";
 import { DeviceModal } from "@/app/components/DeviceModal";
 import { useCues } from "@/hooks/useCues";
 import { useMultiDevice } from "@/hooks/useMultiDevice";
@@ -156,69 +155,6 @@ export default function App() {
       };
     });
   }, [cues]);
-
-  // Convert cue lists or shows to timeline format
-  const timelineCues = useMemo(() => {
-    // If we have cue lists for this show, use the first one to generate timeline
-    if (currentShow && cueLists.length > 0) {
-      const firstCueList = cueLists[0];
-      // Cue lists have cues in order - convert them to timeline format
-      // For now, use a simple sequential layout (could be enhanced with actual timing)
-      let currentTime = 0;
-      return firstCueList.cueListCues
-        ?.sort((a, b) => a.order - b.order)
-        .map((cueListItem) => {
-          const cue = cues.find(c => c.id === cueListItem.cueId);
-          if (!cue) return null;
-          
-          // Calculate duration from cue steps
-          const duration = cue.cueSteps && cue.cueSteps.length > 0
-            ? Math.max(...cue.cueSteps.map(s => Number(s.timeOffset) + Number(s.transitionDuration)))
-            : 5; // Default 5 seconds
-          
-          // Use unique key combining cueListId, order, and cueId to avoid duplicates
-          const timelineCue = {
-            id: `${firstCueList.id}-${cueListItem.order}-${cue.id}`,
-            name: cue.name,
-            startTime: currentTime,
-            duration: Math.max(duration, 1),
-            color: "#4A6FA5", // Default color, could extract from cue steps
-          };
-          
-          currentTime += timelineCue.duration;
-          return timelineCue;
-        })
-        .filter((tc): tc is { id: string; name: string; startTime: number; duration: number; color: string } => tc !== null) || [];
-    }
-    
-    // If no cue lists, use cues from the current show
-    if (currentShow && cues.length > 0) {
-      let currentTime = 0;
-      return cues.map((cue) => {
-        const duration = cue.cueSteps && cue.cueSteps.length > 0
-          ? Math.max(...cue.cueSteps.map(s => Number(s.timeOffset) + Number(s.transitionDuration)))
-          : 5;
-        
-        const timelineCue = {
-          id: cue.id.toString(),
-          name: cue.name,
-          startTime: currentTime,
-          duration: Math.max(duration, 1),
-          color: "#4A6FA5",
-        };
-        
-        currentTime += timelineCue.duration;
-        return timelineCue;
-      });
-    }
-    
-    // Fallback: empty timeline
-    return [];
-  }, [cueLists, cues, currentShow]);
-
-  const totalDuration = timelineCues.length > 0
-    ? Math.max(...timelineCues.map(tc => tc.startTime + tc.duration))
-    : 180;
 
   const connectedDevices = getConnectedDevices();
   const connectedCount = connectedDevices.length;
@@ -547,10 +483,8 @@ export default function App() {
             onDelete={handleDeviceDelete}
           />
 
-          {/* Center Panel - Timeline & Controls */}
+          {/* Center Panel - Controls */}
           <div className="col-span-6 space-y-6">
-            <Timeline cues={timelineCues} totalDuration={totalDuration} />
-            
             <Tabs defaultValue="cues" className="w-full">
               <TabsList className="grid w-full grid-cols-3 bg-zinc-900">
                 <TabsTrigger value="cues">Cues</TabsTrigger>

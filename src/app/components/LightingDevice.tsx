@@ -1,4 +1,4 @@
-import { Lightbulb, Pencil } from "lucide-react";
+import { Lightbulb, Pencil, ChevronDown, ChevronUp } from "lucide-react";
 import { Slider } from "@/app/components/ui/slider";
 import { Switch } from "@/app/components/ui/switch";
 import { HexColorPicker } from "react-colorful";
@@ -50,6 +50,7 @@ export function LightingDevice({
   const [deviceColor, setDeviceColor] = useState(color);
   const [deviceActive, setDeviceActive] = useState(isActive);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const colorInputTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Update device when intensity changes
@@ -150,21 +151,34 @@ export function LightingDevice({
   }, []);
 
   return (
-    <div className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-4 backdrop-blur-sm hover:border-zinc-700 transition-colors">
-      <div className="flex items-start justify-between mb-3">
+    <div className="bg-zinc-900/80 border border-zinc-800 rounded-lg backdrop-blur-sm hover:border-zinc-700 transition-colors overflow-hidden">
+      <div
+        className={`flex items-start justify-between gap-2 p-3 cursor-pointer select-none ${expanded ? "pb-2" : ""}`}
+        onClick={() => setExpanded((e) => !e)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((prev) => !prev);
+          }
+        }}
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse device controls" : "Expand device controls"}
+      >
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div 
-            className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0" 
-            style={{ backgroundColor: deviceActive ? deviceColor : '#27272a' }}
+          <div
+            className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: deviceActive ? deviceColor : "#27272a" }}
           >
-            <Lightbulb className={`w-5 h-5 ${deviceActive ? 'text-white' : 'text-zinc-600'}`} />
+            <Lightbulb className={`w-5 h-5 ${deviceActive ? "text-white" : "text-zinc-600"}`} />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-sm text-white truncate">{name}</h3>
             <p className="text-xs text-zinc-500">{type}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           {onEdit && (
             <Button
               size="sm"
@@ -180,63 +194,66 @@ export function LightingDevice({
             </Button>
           )}
           <Switch checked={deviceActive} onCheckedChange={handlePowerChange} disabled={isUpdating || !ipAddress} />
+          <span className="text-zinc-500 ml-0.5" aria-hidden>
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </span>
         </div>
       </div>
-      
-      <div className="space-y-3">
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-xs text-zinc-400">Intensity</label>
-            <span className="text-xs text-zinc-400">{deviceIntensity}%</span>
+
+      {expanded && (
+        <div className="space-y-3 px-3 pb-3 pt-0" onClick={(e) => e.stopPropagation()}>
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-xs text-zinc-400">Intensity</label>
+              <span className="text-xs text-zinc-400">{deviceIntensity}%</span>
+            </div>
+            <Slider
+              value={[deviceIntensity]}
+              onValueChange={(val) => handleIntensityChange(val[0])}
+              max={100}
+              step={1}
+              className="w-full"
+              disabled={!deviceActive || isUpdating || !ipAddress}
+            />
           </div>
-          <Slider 
-            value={[deviceIntensity]} 
-            onValueChange={(val) => handleIntensityChange(val[0])}
-            max={100}
-            step={1}
-            className="w-full"
-            disabled={!deviceActive || isUpdating || !ipAddress}
-          />
-        </div>
-        
-        <div>
-          <label className="text-xs text-zinc-400 mb-2 block">Color</label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button 
-                className="w-full h-8 rounded border border-zinc-700 hover:border-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: deviceActive ? deviceColor : '#27272a' }}
-                disabled={!deviceActive || isUpdating || !ipAddress}
-              />
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-3 bg-zinc-900 border-zinc-800">
-              <HexColorPicker color={deviceColor} onChange={handleColorChange} />
-              <input
-                type="text"
-                value={deviceColor}
-                onChange={(e) => {
-                  const newColor = e.target.value;
-                  setDeviceColor(newColor);
-                  
-                  // Clear existing timeout
-                  if (colorInputTimeoutRef.current) {
-                    clearTimeout(colorInputTimeoutRef.current);
-                  }
-                  
-                  // Debounce color updates on manual input
-                  colorInputTimeoutRef.current = setTimeout(() => {
-                    if (/^#?[0-9A-Fa-f]{6}$/.test(newColor)) {
-                      handleColorChange(newColor.startsWith('#') ? newColor : `#${newColor}`);
+
+          <div>
+            <label className="text-xs text-zinc-400 mb-2 block">Color</label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  className="w-full h-8 rounded border border-zinc-700 hover:border-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: deviceActive ? deviceColor : "#27272a" }}
+                  disabled={!deviceActive || isUpdating || !ipAddress}
+                />
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-3 bg-zinc-900 border-zinc-800">
+                <HexColorPicker color={deviceColor} onChange={handleColorChange} />
+                <input
+                  type="text"
+                  value={deviceColor}
+                  onChange={(e) => {
+                    const newColor = e.target.value;
+                    setDeviceColor(newColor);
+
+                    if (colorInputTimeoutRef.current) {
+                      clearTimeout(colorInputTimeoutRef.current);
                     }
-                  }, 500);
-                }}
-                className="w-full mt-2 px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded text-white"
-                disabled={isUpdating || !ipAddress}
-              />
-            </PopoverContent>
-          </Popover>
+
+                    colorInputTimeoutRef.current = setTimeout(() => {
+                      if (/^#?[0-9A-Fa-f]{6}$/.test(newColor)) {
+                        handleColorChange(newColor.startsWith("#") ? newColor : `#${newColor}`);
+                      }
+                    }, 500);
+                  }}
+                  className="w-full mt-2 px-2 py-1 text-xs bg-zinc-800 border border-zinc-700 rounded text-white"
+                  disabled={isUpdating || !ipAddress}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

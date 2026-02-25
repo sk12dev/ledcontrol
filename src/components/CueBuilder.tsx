@@ -99,10 +99,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     }
   }, []);
 
-  const connectedDevices = devices.filter(
-    (device) => getDeviceConnectionStatus(device.id)?.isConnected
-  );
-
   const addStep = () => {
     const newStep: CueStep = {
       order: steps.length,
@@ -790,30 +786,36 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                   <label className="block text-sm font-medium mb-2 text-zinc-300">
                     Target Devices *
                   </label>
-                  {connectedDevices.length === 0 ? (
+                  {devices.length === 0 ? (
                     <p className="text-zinc-400 text-sm">
-                      No connected devices available
+                      No devices available. Add devices first.
                     </p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {connectedDevices.map((device) => (
-                        <label
-                          key={device.id}
-                          className={`px-3 py-2 rounded cursor-pointer border ${
-                            step.deviceIds.includes(device.id)
-                              ? "bg-blue-600 border-blue-500 text-white"
-                              : "bg-zinc-800 border-zinc-700 text-zinc-300"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={step.deviceIds.includes(device.id)}
-                            onChange={() => handleDeviceToggle(index, device.id)}
-                            className="sr-only"
-                          />
-                          {device.name}
-                        </label>
-                      ))}
+                      {devices.map((device) => {
+                        const isConnected = getDeviceConnectionStatus(device.id)?.isConnected ?? false;
+                        return (
+                          <label
+                            key={device.id}
+                            className={`px-3 py-2 rounded cursor-pointer border ${
+                              step.deviceIds.includes(device.id)
+                                ? "bg-blue-600 border-blue-500 text-white"
+                                : "bg-zinc-800 border-zinc-700 text-zinc-300"
+                            } ${!isConnected ? "opacity-90" : ""}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={step.deviceIds.includes(device.id)}
+                              onChange={() => handleDeviceToggle(index, device.id)}
+                              className="sr-only"
+                            />
+                            {device.name}
+                            {!isConnected && (
+                              <span className="ml-1.5 text-xs opacity-80">(offline)</span>
+                            )}
+                          </label>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
