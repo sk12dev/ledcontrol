@@ -60,7 +60,7 @@ export default function App() {
     refreshDeviceStates
   } = useMultiDevice();
   const { shows, loading: showsLoading } = useShows();
-  const { cueLists, loading: cueListsLoading } = useCueLists(undefined, showId);
+  const { loading: cueListsLoading } = useCueLists(undefined, showId);
 
   // Get current show data
   const currentShow = useMemo(() => {
