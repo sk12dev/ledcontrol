@@ -6,37 +6,38 @@ import { cueExecutionService } from "../services/cueExecutionService.js";
 
 export const cuesRouter = Router();
 
-// Validation schemas
-const stepSchema = z
-  .object({
-    order: z.number().int().min(0),
-    timeOffset: z.coerce.number().min(0),
-    transitionDuration: z.coerce.number().min(0),
-    targetColor: z.array(z.number().int().min(0).max(255)).length(4).optional().nullable(),
-    targetBrightness: z.number().int().min(1).max(255).optional().nullable(),
-    startColor: z
-      .union([
-        z.array(z.number().int().min(0).max(255)).length(0),
-        z.array(z.number().int().min(0).max(255)).length(4),
-      ])
-      .optional(),
-    startBrightness: z.number().int().min(1).max(255).optional().nullable(),
-    turnOff: z.boolean().optional().default(false),
-    useWledEffect: z.boolean().optional().default(false),
-    wledEffectId: z.number().int().min(0).max(255).optional().nullable(),
-    wledEffectSpeed: z.number().int().min(0).max(255).optional().nullable(),
-    wledEffectIntensity: z.number().int().min(0).max(255).optional().nullable(),
-    wledPaletteId: z.number().int().min(0).optional().nullable(),
-    deviceIds: z.array(z.number().int().positive()).min(1),
-  })
-  .refine(
-    (step) => {
-      if (step.turnOff) return true;
-      if (step.useWledEffect) return step.wledEffectId != null;
-      return step.targetColor != null || step.targetBrightness != null;
-    },
-    { message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)" }
-  );
+// Validation schemas - base object so we can .extend() (refined schema has no .extend())
+const stepSchemaBase = z.object({
+  order: z.number().int().min(0),
+  timeOffset: z.coerce.number().min(0),
+  transitionDuration: z.coerce.number().min(0),
+  targetColor: z.array(z.number().int().min(0).max(255)).length(4).optional().nullable(),
+  targetBrightness: z.number().int().min(1).max(255).optional().nullable(),
+  startColor: z
+    .union([
+      z.array(z.number().int().min(0).max(255)).length(0),
+      z.array(z.number().int().min(0).max(255)).length(4),
+    ])
+    .optional(),
+  startBrightness: z.number().int().min(1).max(255).optional().nullable(),
+  turnOff: z.boolean().optional().default(false),
+  useWledEffect: z.boolean().optional().default(false),
+  wledEffectId: z.number().int().min(0).max(255).optional().nullable(),
+  wledEffectSpeed: z.number().int().min(0).max(255).optional().nullable(),
+  wledEffectIntensity: z.number().int().min(0).max(255).optional().nullable(),
+  wledPaletteId: z.number().int().min(0).optional().nullable(),
+  deviceIds: z.array(z.number().int().positive()).min(1),
+});
+
+const stepRefine = (step: z.infer<typeof stepSchemaBase>) => {
+  if (step.turnOff) return true;
+  if (step.useWledEffect) return step.wledEffectId != null;
+  return step.targetColor != null || step.targetBrightness != null;
+};
+
+const stepSchema = stepSchemaBase.refine(stepRefine, {
+  message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)",
+});
 
 const createCueSchema = z.object({
   name: z.string().min(1).max(255),
@@ -46,8 +47,10 @@ const createCueSchema = z.object({
   steps: z.array(stepSchema).min(1),
 });
 
-const updateStepSchema = stepSchema.extend({
+const updateStepSchema = stepSchemaBase.extend({
   id: z.number().int().positive().optional(),
+}).refine(stepRefine, {
+  message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)",
 });
 
 const updateCueSchema = z.object({

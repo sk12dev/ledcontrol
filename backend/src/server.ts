@@ -66,9 +66,10 @@ connectionManager.initialize().catch((error) => {
   console.error("Error initializing connection manager:", error);
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+const HOST = process.env.HOST ?? "0.0.0.0";
+app.listen(Number(PORT), HOST, () => {
+  console.log(`🚀 Server running on http://${HOST}:${PORT}`);
+  console.log(`📊 Health check: http://${HOST}:${PORT}/health`);
 });
 
 // Graceful shutdown
