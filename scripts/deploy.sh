@@ -149,7 +149,7 @@ echo "🔧 Generating Prisma Client..."
 npx prisma generate
 
 echo "🗄️  Running migrations..."
-npx prisma migrate deploy
+npx prisma db push
 
 echo "🏗️  Building backend..."
 cd backend && npm run build && cd ..
