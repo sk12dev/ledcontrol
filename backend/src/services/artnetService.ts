@@ -126,7 +126,11 @@ export async function sendFixtureDmx(
     throw new Error(`Fixture with id ${fixtureId} not found`);
   }
 
-  const { artNetNode, startAddress, channelCount, channelPurposes } = fixture;
+  const { artNetNode, startAddress, channelCount } = fixture;
+
+  if (!artNetNode) {
+    throw new Error(`Fixture ${fixtureId} has no Art-Net node assigned`);
+  }
 
   if (channelValues.length !== channelCount) {
     throw new Error(
@@ -152,6 +156,15 @@ export async function sendFixtureDmx(
   }
 
   sender.transmit();
+
+  // Verification: set DEBUG_ARTNET=1 to log each DMX send (backend terminal)
+  if (process.env.DEBUG_ARTNET === "1" || process.env.DEBUG_ARTNET === "true") {
+    const sample = channelValues.slice(0, 6);
+    const sampleStr = sample.join(",") + (channelValues.length > 6 ? "..." : "");
+    console.log(
+      `[Art-Net] fixture ${fixtureId} "${fixture.name}" -> ${artNetNode.ipAddress} subnet=${artNetNode.subnet} universe=${artNetNode.universe} ch ${startAddress}-${startAddress + channelCount - 1} [${sampleStr}]`
+    );
+  }
 }
 
 /**

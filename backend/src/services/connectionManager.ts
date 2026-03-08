@@ -66,7 +66,6 @@ class ConnectionManager {
    * Check connection status of a single device
    */
   async checkDeviceConnection(deviceId: number): Promise<boolean> {
-    console.log(`[ConnectionManager] Checking connection for device ${deviceId}`);
     const isConnected = await checkDeviceConnection(deviceId);
     const now = new Date();
 
@@ -83,7 +82,6 @@ class ConnectionManager {
         errorCount: 0,
       };
       this.connectionStatus.set(deviceId, newStatus);
-      console.log(`[ConnectionManager] Device ${deviceId} is CONNECTED`);
       return true;
     } else {
       errorCount += 1;
@@ -97,8 +95,6 @@ class ConnectionManager {
         errorCount,
       };
       this.connectionStatus.set(deviceId, newStatus);
-      console.log(`[ConnectionManager] Device ${deviceId} connection check FAILED (errorCount: ${errorCount}, isConnected: ${finalConnected})`);
-
       return finalConnected;
     }
   }
@@ -128,37 +124,23 @@ class ConnectionManager {
    * Returns status for all devices in the database, checking ones that haven't been checked yet
    */
   async getAllConnectionStatuses(): Promise<ConnectionStatus[]> {
-    console.log(`[ConnectionManager] getAllConnectionStatuses called`);
     const devices = await prisma.device.findMany({
       select: { id: true },
     });
 
-    console.log(`[ConnectionManager] Found ${devices.length} devices in database`);
-
-    // Check devices that haven't been checked yet
     const uncheckedDevices = devices.filter(
       (device: { id: number }) => !this.connectionStatus.has(device.id)
     );
 
-    console.log(`[ConnectionManager] ${uncheckedDevices.length} devices need to be checked`);
-
-    // Check all unchecked devices
     if (uncheckedDevices.length > 0) {
-      console.log(`[ConnectionManager] Checking unchecked devices:`, uncheckedDevices.map((d: { id: number }) => d.id));
       await Promise.all(
         uncheckedDevices.map((device: { id: number }) => this.checkDeviceConnection(device.id))
       );
     }
 
-    // Return statuses for all devices
     const statuses: ConnectionStatus[] = devices.map((device: { id: number }) => {
       const status = this.connectionStatus.get(device.id);
-      if (status) {
-        console.log(`[ConnectionManager] Device ${device.id} status: ${status.isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
-        return status;
-      }
-      // Fallback: device not checked yet (shouldn't happen after the check above)
-      console.log(`[ConnectionManager] Device ${device.id} has no status (fallback)`);
+      if (status) return status;
       return {
         deviceId: device.id,
         isConnected: false,
@@ -167,7 +149,6 @@ class ConnectionManager {
       };
     });
 
-    console.log(`[ConnectionManager] Returning ${statuses.length} statuses`);
     return statuses;
   }
 
@@ -184,14 +165,9 @@ class ConnectionManager {
    * Initialize connection status for all devices
    */
   async initialize(): Promise<void> {
-    console.log(`[ConnectionManager] Initializing connection manager`);
-    // Don't initialize with false status - let the first check determine it
-    // Start monitoring immediately so devices get checked
     this.startMonitoring();
-    // Also do an immediate check of all devices
     try {
       await this.checkAllDevices();
-      console.log(`[ConnectionManager] Initial check complete`);
     } catch (error) {
       console.error(`[ConnectionManager] Error during initial check:`, error);
     }

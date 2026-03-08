@@ -270,41 +270,30 @@ export async function checkDeviceConnection(deviceId: number): Promise<boolean> 
       where: { id: deviceId },
     });
 
-    if (!device) {
-      console.log(`[Connection Check] Device ${deviceId} not found in database`);
-      return false;
-    }
+    if (!device) return false;
 
     const baseURL = getBaseURL(device.ipAddress);
-    console.log(`[Connection Check] Checking device ${deviceId} (${device.ipAddress}) at ${baseURL}/info`);
-    
-    // Create AbortController for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log(`[Connection Check] Timeout checking device ${deviceId} (${device.ipAddress})`);
-      controller.abort();
-    }, 5000); // 5 second timeout
-    
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
       const response = await fetch(`${baseURL}/info`, {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
-      const isOk = response.ok;
-      console.log(`[Connection Check] Device ${deviceId} (${device.ipAddress}) - Response OK: ${isOk}, Status: ${response.status}`);
-      return isOk;
+      return response.ok;
     } catch (fetchError) {
       clearTimeout(timeoutId);
-      // If aborted, it's a timeout
-      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-        console.log(`[Connection Check] Device ${deviceId} (${device.ipAddress}) - Connection timeout`);
-        return false;
-      }
-      console.error(`[Connection Check] Device ${deviceId} (${device.ipAddress}) - Fetch error:`, fetchError);
-      throw fetchError;
+      // Offline/unreachable (timeout, ECONNREFUSED, etc.) — return false without logging
+      return false;
     }
   } catch (error) {
-    console.error(`[Connection Check] Error checking connection for device ${deviceId}:`, error);
+    // Only log unexpected errors (e.g. DB), not normal unreachable-device cases
+    const cause = error instanceof Error && "cause" in error ? (error.cause as NodeJS.ErrnoException) : null;
+    const isReachable = cause?.code === "ECONNREFUSED" || cause?.code === "ETIMEDOUT" || cause?.code === "ENOTFOUND";
+    if (!isReachable) {
+      console.error(`[Connection Check] Error checking connection for device ${deviceId}:`, error);
+    }
     return false;
   }
 }

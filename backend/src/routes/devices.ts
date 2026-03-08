@@ -70,15 +70,8 @@ devicesRouter.get("/", async (req: Request, res: Response) => {
 // NOTE: Must be defined before /:id route to avoid matching "connection-status" as an ID
 devicesRouter.get("/connection-status", async (req: Request, res: Response) => {
   try {
-    console.log(`[Devices Route] GET /connection-status requested`);
     const statuses = await connectionManager.getAllConnectionStatuses();
-    console.log(`[Devices Route] Returning ${statuses.length} statuses:`, statuses.map(s => ({
-      deviceId: s.deviceId,
-      isConnected: s.isConnected,
-      lastPingAt: s.lastPingAt?.toISOString() || null,
-      errorCount: s.errorCount
-    })));
-    
+
     // Ensure dates are serialized correctly
     const serializedStatuses = statuses.map(status => ({
       ...status,
@@ -340,17 +333,12 @@ devicesRouter.post("/:id/reconnect", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid device ID" });
     }
 
-    console.log(`[Devices Route] Reconnect requested for device ${id}`);
-    
-    // Force reconnect by clearing status and checking immediately
     const isConnected = await connectionManager.reconnectDevice(id);
     
     // Get the updated status (wait a tiny bit to ensure it's set)
     await new Promise(resolve => setTimeout(resolve, 100));
     const status = connectionManager.getConnectionStatus(id);
-    
-    console.log(`[Devices Route] Reconnect result for device ${id}: isConnected=${isConnected}, status=${status ? status.isConnected : 'null'}`);
-    
+
     if (status) {
       res.json({
         deviceId: id,

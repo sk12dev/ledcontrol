@@ -266,7 +266,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           wledEffectSpeed: step.wledEffectSpeed,
           wledEffectIntensity: step.wledEffectIntensity,
           wledPaletteId: step.wledPaletteId,
-          deviceIds: step.deviceIds,
+          deviceIds: step.deviceIds ?? [],
+          fixtureIds: step.fixtureIds ?? [],
         })),
       };
 

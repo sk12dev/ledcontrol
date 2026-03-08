@@ -377,6 +377,18 @@ class CueExecutionService {
       this.fixtureTransitionFrames.delete(fixtureId);
     }
 
+    const fixture = await prisma.dmxFixture.findUnique({
+      where: { id: fixtureId },
+      include: { artNetNode: true },
+    });
+    if (!fixture) {
+      console.error(`[ExecutionService] Fixture ${fixtureId} not found`);
+      return;
+    }
+    console.log(
+      `[ExecutionService] Step ${step.order + 1}: DMX -> fixture "${fixture.name}" (id=${fixtureId}) node ${fixture.artNetNode?.name ?? "?"} @ ${fixture.artNetNode?.ipAddress ?? "?"} universe ${fixture.artNetNode?.universe ?? "?"}`
+    );
+
     const startColor = step.startColor.length >= 4
       ? step.startColor
       : [0, 0, 0, 0];
@@ -385,14 +397,6 @@ class CueExecutionService {
       : [255, 255, 255, 255];
     const startBrightness = step.startBrightness ?? 0;
     const targetBrightness = step.targetBrightness ?? 255;
-
-    const fixture = await prisma.dmxFixture.findUnique({
-      where: { id: fixtureId },
-    });
-    if (!fixture) {
-      console.error(`Fixture ${fixtureId} not found`);
-      return;
-    }
 
     const channelPurposes = (fixture.channelPurposes as string[]) ?? [];
     const purposes = Array.isArray(channelPurposes) && channelPurposes.length === fixture.channelCount

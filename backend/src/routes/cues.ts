@@ -327,9 +327,7 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
   }
 
   try {
-    console.log(`[Cues Route] PUT /cues/${id} - Request body:`, JSON.stringify(req.body, null, 2));
     const validatedData = updateCueSchema.parse(req.body);
-    console.log(`[Cues Route] PUT /cues/${id} - Validation passed`);
 
     // Check if cue exists
     const existingCue = await prisma.cue.findUnique({
