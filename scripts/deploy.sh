@@ -1,138 +1,215 @@
 #!/bin/bash
 # Deployment script for WLED Control Interface
-# Run this script on your Ubuntu server
+# Installs all dependencies (Node.js, PostgreSQL, Nginx, PM2) and deploys from GitHub
+# Run on Ubuntu server: curl -sSL <url> | bash  OR  ./deploy.sh
 
-set -e  # Exit on error
+set -e
 
 APP_DIR="/var/www/ledcontrol"
 BACKEND_DIR="$APP_DIR/backend"
 LOG_DIR="/var/log/wled-backend"
+REPO_URL="https://github.com/sk12dev/ledcontrol.git"
+DB_USER="wled_user"
+DB_NAME="wled_control"
+DB_PASSWORD="${DB_PASSWORD:-pass12345}"
 
 echo "🚀 Starting WLED Control Interface Deployment..."
 
-# Check if running as root or with sudo
+# Check not running as root
 if [ "$EUID" -eq 0 ]; then
-    echo "⚠️  Please run this script as a regular user (not root)"
-    echo "   The script will prompt for sudo when needed"
+    echo "⚠️  Please run as a regular user (not root). Script will prompt for sudo when needed."
     exit 1
 fi
 
-# Check Node.js
+# Detect server IP for env files (use first non-loopback address)
+SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP="localhost"
+fi
+
+echo "📍 Server IP detected: $SERVER_IP"
+echo ""
+
+# --- Install system dependencies ---
+echo "📦 Updating package lists..."
+sudo apt-get update -qq
+
+# Install Node.js 20
 if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Installing..."
+    echo "📦 Installing Node.js 20..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
     sudo apt-get install -y nodejs
 fi
+echo "✅ Node.js $(node --version)"
 
-echo "✅ Node.js version: $(node --version)"
-echo "✅ npm version: $(npm --version)"
+# Install Git
+if ! command -v git &> /dev/null; then
+    echo "📦 Installing Git..."
+    sudo apt-get install -y git
+fi
 
-# Check PM2
+# Install PostgreSQL
+if ! command -v psql &> /dev/null; then
+    echo "📦 Installing PostgreSQL..."
+    sudo apt-get install -y postgresql postgresql-contrib
+    sudo systemctl start postgresql
+    sudo systemctl enable postgresql
+fi
+echo "✅ PostgreSQL installed"
+
+# Create database and user (idempotent)
+echo "🗄️  Setting up database..."
+sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | grep -q 1 || \
+    sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';"
+sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || \
+    sudo -u postgres psql -c "CREATE DATABASE $DB_NAME OWNER $DB_USER;"
+echo "✅ Database $DB_NAME ready"
+
+# Install Nginx
+if ! command -v nginx &> /dev/null; then
+    echo "📦 Installing Nginx..."
+    sudo apt-get install -y nginx
+    sudo systemctl start nginx
+    sudo systemctl enable nginx
+fi
+echo "✅ Nginx installed"
+
+# Install PM2
 if ! command -v pm2 &> /dev/null; then
     echo "📦 Installing PM2..."
     sudo npm install -g pm2
 fi
 
-# Navigate to app directory
-if [ ! -d "$APP_DIR" ]; then
-    echo "❌ Application directory not found: $APP_DIR"
-    echo "   Please clone or copy the application files first"
-    exit 1
-fi
+# --- Clone or update application ---
+echo ""
+echo "📥 Fetching application from GitHub..."
 
+sudo mkdir -p /var/www
+if [ ! -d "$APP_DIR/.git" ]; then
+    if [ -d "$APP_DIR" ]; then
+        echo "⚠️  $APP_DIR exists but is not a git repo. Backing up and cloning..."
+        sudo mv "$APP_DIR" "${APP_DIR}.bak.$(date +%s)"
+    fi
+    sudo git clone "$REPO_URL" "$APP_DIR"
+else
+    cd "$APP_DIR"
+    git fetch origin
+    git reset --hard origin/main
+fi
+sudo chown -R $USER:$USER "$APP_DIR"
 cd "$APP_DIR"
 
-echo "📦 Installing dependencies..."
+# Prisma: remove prisma.config.ts (requires prisma/config module, fails on server)
+# Use prisma.config.mjs instead which works without that import
+rm -f prisma.config.ts
+if [ ! -f "prisma.config.mjs" ]; then
+    echo "📝 Creating prisma.config.mjs..."
+    cat > prisma.config.mjs << 'PRISMA_CONFIG'
+import "dotenv/config";
 
-# Install root dependencies
-if [ -f "package.json" ]; then
-    npm install
-else
-    echo "⚠️  package.json not found in root directory"
+export default {
+  schema: "prisma/schema.prisma",
+  migrations: { path: "prisma/migrations" },
+  datasource: {
+    url: process.env.DATABASE_URL,
+  },
+};
+PRISMA_CONFIG
 fi
 
-# Install backend dependencies
-if [ -d "$BACKEND_DIR" ] && [ -f "$BACKEND_DIR/package.json" ]; then
-    cd "$BACKEND_DIR"
-    npm install
-    cd "$APP_DIR"
-else
-    echo "⚠️  Backend directory or package.json not found"
-fi
-
-# Check for .env files
+# --- Environment files ---
 if [ ! -f "$BACKEND_DIR/.env" ]; then
-    echo "⚠️  Backend .env file not found at $BACKEND_DIR/.env"
-    echo "   Please create it with required environment variables"
-    echo "   See docs/deployment-guide.md for details"
+    echo "📝 Creating backend/.env from template..."
+    cp backend/env.template backend/.env
+    sed -i "s|192.168.1.39|$SERVER_IP|g" backend/.env
+    echo "   Edit backend/.env if you need to change DATABASE_URL or FRONTEND_URL"
 fi
 
-# Generate Prisma Client
+if [ ! -f ".env.production" ]; then
+    echo "📝 Creating .env.production from template..."
+    cp env.production.template .env.production
+    sed -i "s|192.168.1.39|$SERVER_IP|g" .env.production
+fi
+
+# Load backend .env for Prisma
+if [ -f "$BACKEND_DIR/.env" ]; then
+    set -a
+    source "$BACKEND_DIR/.env"
+    set +a
+fi
+
+# --- Build ---
+echo ""
+echo "📦 Installing dependencies..."
+npm install
+# Backend needs devDependencies (@types/*) for tsc - ensure they install even if NODE_ENV=production
+cd backend && npm install --include=dev && cd ..
+
 echo "🔧 Generating Prisma Client..."
-npx prisma generate || echo "⚠️  Prisma generate failed - make sure DATABASE_URL is set"
+npx prisma generate
 
-# Run database migrations
-echo "🗄️  Running database migrations..."
-npx prisma migrate deploy || echo "⚠️  Migration failed - check database connection"
+echo "🗄️  Running migrations..."
+npx prisma migrate deploy
 
-# Build backend
 echo "🏗️  Building backend..."
-if [ -d "$BACKEND_DIR" ]; then
-    cd "$BACKEND_DIR"
-    npm run build || {
-        echo "❌ Backend build failed"
-        exit 1
-    }
-    cd "$APP_DIR"
-fi
+cd backend && npm run build && cd ..
 
-# Build frontend
 echo "🏗️  Building frontend..."
-npm run build || {
-    echo "❌ Frontend build failed"
-    exit 1
-}
+npm run build
 
-# Create log directory
+# --- Log directory ---
 if [ ! -d "$LOG_DIR" ]; then
-    echo "📁 Creating log directory..."
     sudo mkdir -p "$LOG_DIR"
     sudo chown -R $USER:$USER "$LOG_DIR"
 fi
 
-# Check if PM2 app is already running
-if pm2 list | grep -q "wled-backend"; then
-    echo "🔄 Restarting existing PM2 application..."
+# --- PM2 ---
+echo ""
+if pm2 list 2>/dev/null | grep -q "wled-backend"; then
+    echo "🔄 Restarting PM2 application..."
     pm2 restart wled-backend
 else
     echo "▶️  Starting PM2 application..."
     if [ -f "ecosystem.config.cjs" ]; then
         pm2 start ecosystem.config.cjs
-    elif [ -f "ecosystem.config.js" ]; then
-        pm2 start ecosystem.config.js
     else
-        # Fallback: start directly
         cd "$BACKEND_DIR"
-        pm2 start dist/server.js --name wled-backend --cwd "$APP_DIR"
+        pm2 start dist/server.js --name wled-backend --cwd "$BACKEND_DIR"
         cd "$APP_DIR"
     fi
 fi
-
-# Save PM2 configuration
 pm2 save
 
-# Setup PM2 startup script
-if ! pm2 startup | grep -q "already setup"; then
-    echo "📝 Setting up PM2 startup script..."
-    echo "   Please run the command shown above with sudo"
-    pm2 startup
+echo "📝 Run the sudo command below to enable PM2 on boot (optional):"
+pm2 startup systemd 2>/dev/null || true
+
+# --- Nginx ---
+echo ""
+echo "🌐 Configuring Nginx..."
+
+# Replace server IP in nginx config
+sudo cp scripts/nginx-ledcontrol.conf /etc/nginx/sites-available/ledcontrol
+sudo sed -i "s|192.168.1.39|$SERVER_IP|g" /etc/nginx/sites-available/ledcontrol
+
+if [ ! -L /etc/nginx/sites-enabled/ledcontrol ]; then
+    sudo ln -sf /etc/nginx/sites-available/ledcontrol /etc/nginx/sites-enabled/
 fi
 
+# Disable default site if it exists
+sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+sudo nginx -t && sudo systemctl reload nginx
+echo "✅ Nginx configured"
+
+# --- Done ---
+echo ""
 echo "✅ Deployment complete!"
 echo ""
 echo "📊 Application Status:"
 pm2 status
 echo ""
-echo "📝 View logs with: pm2 logs wled-backend"
-echo "🌐 Frontend should be available at: http://192.168.1.39"
-echo "🔍 Backend API health check: http://192.168.1.39/api/health"
+echo "🌐 Frontend:  http://$SERVER_IP"
+echo "🔍 API Health: http://$SERVER_IP/api/health"
+echo "📝 Logs: pm2 logs wled-backend"
+echo ""
+echo "⚠️  Change DB password: set DB_PASSWORD before running, or edit backend/.env"

@@ -172,7 +172,7 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
 
       // Validate that all cues belong to the same show as the cue list
       const cuesFromDifferentShow = cues.filter(
-        (cue) => cue.showId !== validatedData.showId
+        (cue: { showId: number }) => cue.showId !== validatedData.showId
       );
 
       if (cuesFromDifferentShow.length > 0) {
@@ -283,7 +283,7 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
 
       // Validate that all cues belong to the same show as the cue list
       const cuesFromDifferentShow = cues.filter(
-        (cue) => cue.showId !== targetShowId
+        (cue: { showId: number }) => cue.showId !== targetShowId
       );
 
       if (cuesFromDifferentShow.length > 0) {

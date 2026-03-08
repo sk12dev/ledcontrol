@@ -94,7 +94,14 @@ class CueExecutionService {
 
     console.log(`[ExecutionService] Cue ${cueId} has ${cue.cueSteps.length} steps`);
     // Prepare steps with device assignments
-    const steps: CueStepWithDevices[] = cue.cueSteps.map((step) => ({
+    const steps: CueStepWithDevices[] = cue.cueSteps.map((step: {
+      id: number; order: number; timeOffset: unknown; transitionDuration: unknown;
+      targetColor: number[]; targetBrightness: number | null; startColor: number[];
+      startBrightness: number | null; turnOff: boolean; useWledEffect: boolean;
+      wledEffectId: number | null; wledEffectSpeed: number | null;
+      wledEffectIntensity: number | null; wledPaletteId: number | null;
+      cueStepDevices: Array<{ deviceId: number }>;
+    }) => ({
       id: step.id,
       order: step.order,
       timeOffset: Number(step.timeOffset),
@@ -109,7 +116,7 @@ class CueExecutionService {
       wledEffectSpeed: step.wledEffectSpeed ?? null,
       wledEffectIntensity: step.wledEffectIntensity ?? null,
       wledPaletteId: step.wledPaletteId ?? null,
-      devices: step.cueStepDevices.map((csd) => csd.deviceId),
+      devices: step.cueStepDevices.map((csd: { deviceId: number }) => csd.deviceId),
     }));
 
     // Initialize execution status

@@ -58,7 +58,7 @@ class ConnectionManager {
     });
 
     await Promise.all(
-      devices.map((device) => this.checkDeviceConnection(device.id))
+      devices.map((device: { id: number }) => this.checkDeviceConnection(device.id))
     );
   }
 
@@ -137,7 +137,7 @@ class ConnectionManager {
 
     // Check devices that haven't been checked yet
     const uncheckedDevices = devices.filter(
-      (device) => !this.connectionStatus.has(device.id)
+      (device: { id: number }) => !this.connectionStatus.has(device.id)
     );
 
     console.log(`[ConnectionManager] ${uncheckedDevices.length} devices need to be checked`);
@@ -146,12 +146,12 @@ class ConnectionManager {
     if (uncheckedDevices.length > 0) {
       console.log(`[ConnectionManager] Checking unchecked devices:`, uncheckedDevices.map(d => d.id));
       await Promise.all(
-        uncheckedDevices.map((device) => this.checkDeviceConnection(device.id))
+        uncheckedDevices.map((device: { id: number }) => this.checkDeviceConnection(device.id))
       );
     }
 
     // Return statuses for all devices
-    const statuses: ConnectionStatus[] = devices.map((device) => {
+    const statuses: ConnectionStatus[] = devices.map((device: { id: number }) => {
       const status = this.connectionStatus.get(device.id);
       if (status) {
         console.log(`[ConnectionManager] Device ${device.id} status: ${status.isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
