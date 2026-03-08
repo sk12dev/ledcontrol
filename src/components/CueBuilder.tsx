@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { useMultiDevice } from "../hooks/useMultiDevice";
+import { useDmxFixtures } from "../hooks/useDmxFixtures";
 import { useShows } from "../hooks/useShows";
 import {
   type Cue,
@@ -26,6 +27,7 @@ interface CueStep {
   wledEffectIntensity: number | null;
   wledPaletteId: number | null;
   deviceIds: number[];
+  fixtureIds: number[];
 }
 
 interface CueBuilderProps {
@@ -38,6 +40,7 @@ interface CueBuilderProps {
 
 export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }: CueBuilderProps) {
   const { devices, getDeviceConnectionStatus } = useMultiDevice();
+  const { fixtures } = useDmxFixtures();
   const { shows } = useShows();
   const [name, setName] = useState(cue?.name || "");
   const [description, setDescription] = useState(cue?.description || "");
@@ -62,6 +65,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         wledEffectIntensity: step.wledEffectIntensity ?? 128,
         wledPaletteId: step.wledPaletteId ?? 0,
         deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
+        fixtureIds: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
       }));
     }
     return [];
@@ -115,6 +119,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       wledEffectIntensity: 128,
       wledPaletteId: 0,
       deviceIds: [],
+      fixtureIds: [],
     };
     setSteps([...steps, newStep]);
   };
@@ -149,7 +154,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       wledEffectSpeed: stepToDuplicate.wledEffectSpeed,
       wledEffectIntensity: stepToDuplicate.wledEffectIntensity,
       wledPaletteId: stepToDuplicate.wledPaletteId,
-      deviceIds: [...stepToDuplicate.deviceIds],
+      deviceIds: [...(stepToDuplicate.deviceIds ?? [])],
+      fixtureIds: [...(stepToDuplicate.fixtureIds ?? [])],
     };
     
     // Insert the duplicated step right after the original
@@ -184,6 +190,20 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     }
   };
 
+  const handleFixtureToggle = (stepIndex: number, fixtureId: number) => {
+    const step = steps[stepIndex];
+    const fids = step.fixtureIds ?? [];
+    if (fids.includes(fixtureId)) {
+      updateStep(stepIndex, {
+        fixtureIds: fids.filter((id) => id !== fixtureId),
+      });
+    } else {
+      updateStep(stepIndex, {
+        fixtureIds: [...fids, fixtureId],
+      });
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       setError("Cue name is required");
@@ -202,8 +222,10 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
 
     // Validate steps
     for (const step of steps) {
-      if (step.deviceIds.length === 0) {
-        setError(`Step ${step.order + 1} must have at least one device selected`);
+      const hasDevices = (step.deviceIds ?? []).length > 0;
+      const hasFixtures = (step.fixtureIds ?? []).length > 0;
+      if (!hasDevices && !hasFixtures) {
+        setError(`Step ${step.order + 1} must have at least one device or fixture selected`);
         return;
       }
       const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
@@ -281,8 +303,10 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
 
     // Validate steps
     for (const step of steps) {
-      if (step.deviceIds.length === 0) {
-        setError(`Step ${step.order + 1} must have at least one device selected`);
+      const hasDevices = (step.deviceIds ?? []).length > 0;
+      const hasFixtures = (step.fixtureIds ?? []).length > 0;
+      if (!hasDevices && !hasFixtures) {
+        setError(`Step ${step.order + 1} must have at least one device or fixture selected`);
         return;
       }
       const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
@@ -323,7 +347,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           wledEffectSpeed: step.wledEffectSpeed,
           wledEffectIntensity: step.wledEffectIntensity,
           wledPaletteId: step.wledPaletteId,
-          deviceIds: step.deviceIds,
+          deviceIds: step.deviceIds ?? [],
+          fixtureIds: step.fixtureIds ?? [],
         })),
       };
 
@@ -542,8 +567,8 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                       checked={step.useWledEffect}
                       onChange={(e) => {
                         const checked = e.target.checked;
-                        if (checked && step.deviceIds.length > 0) {
-                          loadWledData(step.deviceIds[0]);
+                        if (checked && (step.deviceIds ?? []).length > 0) {
+                          loadWledData((step.deviceIds ?? [])[0]);
                         }
                         updateStep(index, {
                           useWledEffect: checked,
@@ -567,14 +592,14 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                 {step.useWledEffect && !step.turnOff && (
                   <div className="mb-4 p-4 bg-zinc-900 rounded-lg border border-zinc-700 space-y-4">
                     <h5 className="text-sm font-medium text-zinc-300">Effect Settings</h5>
-                    {step.deviceIds.length === 0 ? (
+                    {(step.deviceIds ?? []).length === 0 ? (
                       <p className="text-zinc-400 text-sm">
-                        Select at least one device to load effects
+                        Select at least one WLED device to load effects
                       </p>
                     ) : (
                       <>
                         {(() => {
-                          const deviceId = step.deviceIds[0];
+                          const deviceId = (step.deviceIds ?? [])[0];
                           const wledData = wledDataByDevice.get(deviceId);
                           if (!wledData && !wledLoading) {
                             loadWledData(deviceId);
@@ -784,28 +809,29 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
 
                 <div>
                   <label className="block text-sm font-medium mb-2 text-zinc-300">
-                    Target Devices *
+                    Target Devices (WLED)
                   </label>
                   {devices.length === 0 ? (
                     <p className="text-zinc-400 text-sm">
-                      No devices available. Add devices first.
+                      No WLED devices. Add devices or use fixtures below.
                     </p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {devices.map((device) => {
                         const isConnected = getDeviceConnectionStatus(device.id)?.isConnected ?? false;
+                        const devIds = step.deviceIds ?? [];
                         return (
                           <label
                             key={device.id}
                             className={`px-3 py-2 rounded cursor-pointer border ${
-                              step.deviceIds.includes(device.id)
+                              devIds.includes(device.id)
                                 ? "bg-blue-600 border-blue-500 text-white"
                                 : "bg-zinc-800 border-zinc-700 text-zinc-300"
                             } ${!isConnected ? "opacity-90" : ""}`}
                           >
                             <input
                               type="checkbox"
-                              checked={step.deviceIds.includes(device.id)}
+                              checked={devIds.includes(device.id)}
                               onChange={() => handleDeviceToggle(index, device.id)}
                               className="sr-only"
                             />
@@ -813,6 +839,40 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                             {!isConnected && (
                               <span className="ml-1.5 text-xs opacity-80">(offline)</span>
                             )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-zinc-300">
+                    Target Fixtures (DMX)
+                  </label>
+                  {fixtures.length === 0 ? (
+                    <p className="text-zinc-400 text-sm">
+                      No DMX fixtures. Add fixtures in the left panel.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {fixtures.map((fixture) => {
+                        const fids = step.fixtureIds ?? [];
+                        return (
+                          <label
+                            key={fixture.id}
+                            className={`px-3 py-2 rounded cursor-pointer border ${
+                              fids.includes(fixture.id)
+                                ? "bg-emerald-600 border-emerald-500 text-white"
+                                : "bg-zinc-800 border-zinc-700 text-zinc-300"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={fids.includes(fixture.id)}
+                              onChange={() => handleFixtureToggle(index, fixture.id)}
+                              className="sr-only"
+                            />
+                            {fixture.name} (Ch{fixture.startAddress})
                           </label>
                         );
                       })}

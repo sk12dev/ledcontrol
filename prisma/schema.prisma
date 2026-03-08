@@ -116,6 +116,60 @@ model Cue {
   @@map("cues")
 }
 
+// Art-Net Node model - Recipients of DMX data over UDP
+model ArtNetNode {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(255)
+  ipAddress  String    @unique @map("ip_address") @db.VarChar(45)
+  subnet     Int       @default(0) // 0-15
+  universe   Int       @default(0) // 0-15
+  lastSeen   DateTime? @map("last_seen") @db.Timestamp
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamp
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  dmxFixtures DmxFixture[]
+
+  @@index([ipAddress])
+  @@map("art_net_nodes")
+}
+
+// DMX Fixture model - Logical DMX device with flexible channel mapping
+model DmxFixture {
+  id              Int      @id @default(autoincrement())
+  name            String   @db.VarChar(255)
+  artNetNodeId    Int      @map("art_net_node_id")
+  startAddress    Int      @map("start_address") // DMX start channel 1-512
+  channelCount    Int      @map("channel_count") // 1-512
+  channelPurposes Json     @map("channel_purposes") // Array of purpose strings per channel
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  artNetNode    ArtNetNode     @relation(fields: [artNetNodeId], references: [id], onDelete: Cascade)
+  cueStepFixtures CueStepFixture[]
+
+  @@index([artNetNodeId])
+  @@map("dmx_fixtures")
+}
+
+// CueStepFixture model - Links cue steps to DMX fixtures
+model CueStepFixture {
+  id        Int      @id @default(autoincrement())
+  cueStepId Int      @map("cue_step_id")
+  fixtureId Int      @map("fixture_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+
+  // Relations
+  cueStep CueStep   @relation(fields: [cueStepId], references: [id], onDelete: Cascade)
+  fixture DmxFixture @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+
+  @@unique([cueStepId, fixtureId])
+  @@index([cueStepId])
+  @@index([fixtureId])
+  @@map("cue_step_fixtures")
+}
+
 // CueStep model - Individual operations within a cue
 model CueStep {
   id                Int      @id @default(autoincrement())
@@ -139,6 +193,7 @@ model CueStep {
   // Relations
   cue       Cue           @relation(fields: [cueId], references: [id], onDelete: Cascade)
   cueStepDevices CueStepDevice[]
+  cueStepFixtures CueStepFixture[]
 
   @@index([cueId])
   @@index([cueId, order])

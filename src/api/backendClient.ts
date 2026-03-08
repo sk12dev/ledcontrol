@@ -67,6 +67,84 @@ export interface UpdateDeviceRequest {
 }
 
 /**
+ * Art-Net Node from backend API
+ */
+export interface ArtNetNode {
+  id: number;
+  name: string;
+  ipAddress: string;
+  subnet: number;
+  universe: number;
+  lastSeen?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  dmxFixtures?: Array<{ id: number; name: string; startAddress: number; channelCount: number }>;
+}
+
+/**
+ * Create Art-Net node request
+ */
+export interface CreateArtNetNodeRequest {
+  name: string;
+  ipAddress: string;
+  subnet?: number;
+  universe?: number;
+}
+
+/**
+ * Update Art-Net node request
+ */
+export interface UpdateArtNetNodeRequest {
+  name?: string;
+  ipAddress?: string;
+  subnet?: number;
+  universe?: number;
+}
+
+/**
+ * DMX Fixture from backend API
+ */
+export interface DmxFixture {
+  id: number;
+  name: string;
+  artNetNodeId: number;
+  startAddress: number;
+  channelCount: number;
+  channelPurposes: string[];
+  createdAt: string;
+  updatedAt: string;
+  artNetNode?: {
+    id: number;
+    name: string;
+    ipAddress: string;
+    subnet: number;
+    universe: number;
+  };
+}
+
+/**
+ * Create DMX fixture request
+ */
+export interface CreateDmxFixtureRequest {
+  name: string;
+  artNetNodeId: number;
+  startAddress: number;
+  channelCount: number;
+  channelPurposes: string[];
+}
+
+/**
+ * Update DMX fixture request
+ */
+export interface UpdateDmxFixtureRequest {
+  name?: string;
+  artNetNodeId?: number;
+  startAddress?: number;
+  channelCount?: number;
+  channelPurposes?: string[];
+}
+
+/**
  * Create preset request
  */
 export interface CreatePresetRequest {
@@ -417,6 +495,20 @@ export interface CueStepDevice {
 }
 
 /**
+ * Cue Step Fixture assignment
+ */
+export interface CueStepFixture {
+  id: number;
+  fixtureId: number;
+  fixture: {
+    id: number;
+    name: string;
+    startAddress: number;
+    channelCount: number;
+  };
+}
+
+/**
  * Cue Step
  */
 export interface CueStep {
@@ -436,6 +528,7 @@ export interface CueStep {
   wledEffectIntensity: number | null;
   wledPaletteId: number | null;
   cueStepDevices: CueStepDevice[];
+  cueStepFixtures?: CueStepFixture[];
 }
 
 /**
@@ -479,7 +572,8 @@ export interface CreateCueRequest {
     wledEffectSpeed?: number | null;
     wledEffectIntensity?: number | null;
     wledPaletteId?: number | null;
-    deviceIds: number[];
+    deviceIds?: number[];
+    fixtureIds?: number[];
   }>;
 }
 
@@ -506,9 +600,88 @@ export interface UpdateCueRequest {
     wledEffectSpeed?: number | null;
     wledEffectIntensity?: number | null;
     wledPaletteId?: number | null;
-    deviceIds: number[];
+    deviceIds?: number[];
+    fixtureIds?: number[];
   }>;
 }
+
+/**
+ * Art-Net Nodes API
+ */
+export const artnetNodesApi = {
+  async getAll(): Promise<ArtNetNode[]> {
+    const response = await fetch(`${API_BASE_URL}/artnet-nodes`);
+    return handleResponse<ArtNetNode[]>(response);
+  },
+  async getById(id: number): Promise<ArtNetNode> {
+    const response = await fetch(`${API_BASE_URL}/artnet-nodes/${id}`);
+    return handleResponse<ArtNetNode>(response);
+  },
+  async create(node: CreateArtNetNodeRequest): Promise<ArtNetNode> {
+    const response = await fetch(`${API_BASE_URL}/artnet-nodes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(node),
+    });
+    return handleResponse<ArtNetNode>(response);
+  },
+  async update(id: number, node: UpdateArtNetNodeRequest): Promise<ArtNetNode> {
+    const response = await fetch(`${API_BASE_URL}/artnet-nodes/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(node),
+    });
+    return handleResponse<ArtNetNode>(response);
+  },
+  async delete(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/artnet-nodes/${id}`, {
+      method: "DELETE",
+    });
+    return handleResponse<void>(response);
+  },
+};
+
+/**
+ * DMX Fixtures API
+ */
+export const dmxFixturesApi = {
+  async getAll(): Promise<DmxFixture[]> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixtures`);
+    return handleResponse<DmxFixture[]>(response);
+  },
+  async getById(id: number): Promise<DmxFixture> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixtures/${id}`);
+    return handleResponse<DmxFixture>(response);
+  },
+  async create(fixture: CreateDmxFixtureRequest): Promise<DmxFixture> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixtures`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fixture),
+    });
+    return handleResponse<DmxFixture>(response);
+  },
+  async update(id: number, fixture: UpdateDmxFixtureRequest): Promise<DmxFixture> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixtures/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fixture),
+    });
+    return handleResponse<DmxFixture>(response);
+  },
+  async delete(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixtures/${id}`, {
+      method: "DELETE",
+    });
+    return handleResponse<void>(response);
+  },
+  async test(id: number): Promise<{ success: boolean }> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixtures/${id}/test`, {
+      method: "POST",
+    });
+    return handleResponse<{ success: boolean }>(response);
+  },
+};
 
 /**
  * Execution status

@@ -16,11 +16,15 @@ import {
 import { LightingDevice } from "@/app/components/LightingDevice";
 import { CueCard } from "@/app/components/CueCard";
 import { DeviceModal } from "@/app/components/DeviceModal";
+import { ArtNetNodeModal } from "@/app/components/ArtNetNodeModal";
+import { DmxFixtureModal } from "@/app/components/DmxFixtureModal";
 import { useCues } from "@/hooks/useCues";
 import { useMultiDevice } from "@/hooks/useMultiDevice";
 import { useShows } from "@/hooks/useShows";
 import { useCueLists } from "@/hooks/useCueLists";
-import { type Device, type Cue, type CreateCueRequest, type UpdateCueRequest } from "@/api/backendClient";
+import { useArtNetNodes } from "@/hooks/useArtNetNodes";
+import { useDmxFixtures } from "@/hooks/useDmxFixtures";
+import { type Device, type Cue, type ArtNetNode, type DmxFixture, type CreateCueRequest, type UpdateCueRequest } from "@/api/backendClient";
 import { setState } from "@/api/wledClient";
 import {
   Sheet,
@@ -36,6 +40,10 @@ export default function App() {
   
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
+  const [editingNode, setEditingNode] = useState<ArtNetNode | null>(null);
+  const [isFixtureModalOpen, setIsFixtureModalOpen] = useState(false);
+  const [editingFixture, setEditingFixture] = useState<DmxFixture | null>(null);
   const [isBlackoutDialogOpen, setIsBlackoutDialogOpen] = useState(false);
   const [isBlackingOut, setIsBlackingOut] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -61,6 +69,8 @@ export default function App() {
   } = useMultiDevice();
   const { shows, loading: showsLoading } = useShows();
   const { loading: cueListsLoading } = useCueLists(undefined, showId);
+  const { nodes, refreshNodes } = useArtNetNodes();
+  const { fixtures, refreshFixtures } = useDmxFixtures();
 
   // Get current show data
   const currentShow = useMemo(() => {
@@ -141,10 +151,10 @@ export default function App() {
         ? Math.max(...cue.cueSteps.map(s => (s.timeOffset || 0) + (s.transitionDuration || 0)))
         : 0;
       
-      // Count unique devices
-      const deviceCount = cue.cueSteps && cue.cueSteps.length > 0
-        ? new Set(cue.cueSteps.flatMap(s => s.cueStepDevices?.map(csd => csd.deviceId) || [])).size
-        : 0;
+      // Count unique devices + fixtures
+      const deviceIds = cue.cueSteps?.flatMap(s => s.cueStepDevices?.map(csd => `d:${csd.deviceId}`) || []) ?? [];
+      const fixtureIds = cue.cueSteps?.flatMap(s => s.cueStepFixtures?.map(csf => `f:${csf.fixtureId}`) || []) ?? [];
+      const deviceCount = new Set([...deviceIds, ...fixtureIds]).size;
 
       return {
         id: cue.id.toString(),
@@ -237,6 +247,32 @@ export default function App() {
 
   const handleDeviceDelete = async () => {
     await refreshDevices();
+  };
+
+  const handleAddNode = () => {
+    setEditingNode(null);
+    setIsNodeModalOpen(true);
+  };
+  const handleEditNode = (node: ArtNetNode) => {
+    setEditingNode(node);
+    setIsNodeModalOpen(true);
+  };
+  const handleCloseNodeModal = () => {
+    setIsNodeModalOpen(false);
+    setEditingNode(null);
+  };
+
+  const handleAddFixture = () => {
+    setEditingFixture(null);
+    setIsFixtureModalOpen(true);
+  };
+  const handleEditFixture = (fixture: DmxFixture) => {
+    setEditingFixture(fixture);
+    setIsFixtureModalOpen(true);
+  };
+  const handleCloseFixtureModal = () => {
+    setIsFixtureModalOpen(false);
+    setEditingFixture(null);
   };
 
   // Cue drawer handlers
@@ -438,40 +474,119 @@ export default function App() {
       {/* Main Content */}
       <div className="container mx-auto px-6 py-6">
         <div className="grid grid-cols-12 gap-6">
-          {/* Left Panel - Devices */}
-          <div className="col-span-3">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Lighting Devices</h2>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="border-zinc-800 text-zinc-400 hover:text-white"
-                onClick={handleAddDevice}
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            <div className="space-y-3">
-              {isLoading ? (
-                <div className="text-center py-8 text-zinc-500 text-sm">Loading devices...</div>
-              ) : lightingDevices.length > 0 ? (
-                lightingDevices.map((device) => {
-                  const fullDevice = devices.find(d => d.id === device.deviceId);
-                  return (
-                    <LightingDevice 
-                      key={device.id} 
-                      {...device}
-                      onEdit={fullDevice ? () => handleEditDevice(fullDevice) : undefined}
-                      onStateChange={() => refreshDeviceStates()}
-                    />
-                  );
-                })
-              ) : (
-                <div className="text-center py-8 text-zinc-500 text-sm">
-                  No devices configured. Click + to add a device.
+          {/* Left Panel - Devices & DMX */}
+          <div className="col-span-3 space-y-6">
+            <ScrollArea className="h-[calc(100vh-12rem)]">
+              <div className="space-y-6 pr-4">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold">Lighting Devices</h2>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="border-zinc-800 text-zinc-400 hover:text-white"
+                      onClick={handleAddDevice}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    {isLoading ? (
+                      <div className="text-center py-8 text-zinc-500 text-sm">Loading devices...</div>
+                    ) : lightingDevices.length > 0 ? (
+                      lightingDevices.map((device) => {
+                        const fullDevice = devices.find(d => d.id === device.deviceId);
+                        return (
+                          <LightingDevice 
+                            key={device.id} 
+                            {...device}
+                            onEdit={fullDevice ? () => handleEditDevice(fullDevice) : undefined}
+                            onStateChange={() => refreshDeviceStates()}
+                          />
+                        );
+                      })
+                    ) : (
+                      <div className="text-center py-8 text-zinc-500 text-sm">
+                        No devices configured. Click + to add a device.
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+
+                <div className="border-t border-zinc-800 pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold">Art-Net Nodes</h2>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="border-zinc-800 text-zinc-400 hover:text-white"
+                      onClick={handleAddNode}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {nodes.length === 0 ? (
+                      <div className="text-center py-6 text-zinc-500 text-sm">
+                        No Art-Net nodes. Click + to add.
+                      </div>
+                    ) : (
+                      nodes.map((node) => (
+                        <div
+                          key={node.id}
+                          className="flex items-center justify-between p-2 rounded-lg bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{node.name}</p>
+                            <p className="text-xs text-zinc-500">{node.ipAddress} (S{node.subnet}/U{node.universe})</p>
+                          </div>
+                          <Button size="sm" variant="ghost" className="text-zinc-400" onClick={() => handleEditNode(node)}>
+                            Edit
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold">DMX Fixtures</h2>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="border-zinc-800 text-zinc-400 hover:text-white"
+                      onClick={handleAddFixture}
+                      disabled={nodes.length === 0}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {fixtures.length === 0 ? (
+                      <div className="text-center py-6 text-zinc-500 text-sm">
+                        {nodes.length === 0 ? "Add an Art-Net node first." : "No fixtures. Click + to add."}
+                      </div>
+                    ) : (
+                      fixtures.map((fixture) => (
+                        <div
+                          key={fixture.id}
+                          className="flex items-center justify-between p-2 rounded-lg bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700"
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{fixture.name}</p>
+                            <p className="text-xs text-zinc-500">Ch {fixture.startAddress}+{fixture.channelCount}</p>
+                          </div>
+                          <Button size="sm" variant="ghost" className="text-zinc-400" onClick={() => handleEditFixture(fixture)}>
+                            Edit
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
           </div>
 
           {/* Device Modal */}
@@ -481,6 +596,21 @@ export default function App() {
             onClose={handleCloseDeviceModal}
             onSave={handleDeviceSave}
             onDelete={handleDeviceDelete}
+          />
+          <ArtNetNodeModal
+            node={editingNode}
+            isOpen={isNodeModalOpen}
+            onClose={handleCloseNodeModal}
+            onSave={refreshNodes}
+            onDelete={refreshNodes}
+          />
+          <DmxFixtureModal
+            fixture={editingFixture}
+            nodes={nodes}
+            isOpen={isFixtureModalOpen}
+            onClose={handleCloseFixtureModal}
+            onSave={refreshFixtures}
+            onDelete={refreshFixtures}
           />
 
           {/* Center Panel - Controls */}

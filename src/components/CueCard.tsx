@@ -25,7 +25,7 @@ export function CueCard({ id, name, duration, deviceCount, previewColors, onPlay
           <div className="flex items-center gap-3 text-xs text-zinc-400">
             <span>{duration}s</span>
             <span>•</span>
-            <span>{deviceCount} devices</span>
+            <span>{deviceCount} targets</span>
           </div>
         </div>
         <Button 

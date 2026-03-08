@@ -8,6 +8,8 @@ import { showsRouter } from "./routes/shows.js";
 import { cuesRouter } from "./routes/cues.js";
 import { cueListsRouter } from "./routes/cueLists.js";
 import { executionRouter } from "./routes/execution.js";
+import { artnetNodesRouter } from "./routes/artnetNodes.js";
+import { dmxFixturesRouter } from "./routes/dmxFixtures.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { connectionManager } from "./services/connectionManager.js";
 
@@ -52,6 +54,8 @@ app.use("/api/shows", showsRouter);
 app.use("/api/cues", cuesRouter);
 app.use("/api/cue-lists", cueListsRouter);
 app.use("/api/execution", executionRouter);
+app.use("/api/artnet-nodes", artnetNodesRouter);
+app.use("/api/dmx-fixtures", dmxFixturesRouter);
 
 // 404 handler
 app.use((req, res) => {

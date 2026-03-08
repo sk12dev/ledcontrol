@@ -9,8 +9,9 @@ import {
   updateDeviceState,
   getDeviceState,
 } from "./wledService.js";
+import { sendFixtureDmx, buildFixtureChannelValues } from "./artnetService.js";
 
-interface CueStepWithDevices {
+interface CueStepWithTargets {
   id: number;
   order: number;
   timeOffset: number;
@@ -26,6 +27,7 @@ interface CueStepWithDevices {
   wledEffectIntensity: number | null;
   wledPaletteId: number | null;
   devices: number[];
+  fixtures: number[];
 }
 
 interface ExecutionStatus {
@@ -48,6 +50,7 @@ class CueExecutionService {
   private activeTimeouts: Set<NodeJS.Timeout> = new Set();
   private activeIntervals: Set<NodeJS.Timeout> = new Set();
   private transitionFrames: Map<number, NodeJS.Timeout> = new Map(); // deviceId -> timeout
+  private fixtureTransitionFrames: Map<number, NodeJS.Timeout> = new Map(); // fixtureId -> timeout
 
   // Transition update rate (30 FPS)
   private readonly FRAME_RATE = 30;
@@ -71,9 +74,10 @@ class CueExecutionService {
         cueSteps: {
           include: {
             cueStepDevices: {
-              select: {
-                deviceId: true,
-              },
+              select: { deviceId: true },
+            },
+            cueStepFixtures: {
+              select: { fixtureId: true },
             },
           },
           orderBy: {
@@ -93,14 +97,15 @@ class CueExecutionService {
     }
 
     console.log(`[ExecutionService] Cue ${cueId} has ${cue.cueSteps.length} steps`);
-    // Prepare steps with device assignments
-    const steps: CueStepWithDevices[] = cue.cueSteps.map((step: {
+    // Prepare steps with device and fixture assignments
+    const steps: CueStepWithTargets[] = cue.cueSteps.map((step: {
       id: number; order: number; timeOffset: unknown; transitionDuration: unknown;
       targetColor: number[]; targetBrightness: number | null; startColor: number[];
       startBrightness: number | null; turnOff: boolean; useWledEffect: boolean;
       wledEffectId: number | null; wledEffectSpeed: number | null;
       wledEffectIntensity: number | null; wledPaletteId: number | null;
       cueStepDevices: Array<{ deviceId: number }>;
+      cueStepFixtures: Array<{ fixtureId: number }>;
     }) => ({
       id: step.id,
       order: step.order,
@@ -116,7 +121,8 @@ class CueExecutionService {
       wledEffectSpeed: step.wledEffectSpeed ?? null,
       wledEffectIntensity: step.wledEffectIntensity ?? null,
       wledPaletteId: step.wledPaletteId ?? null,
-      devices: step.cueStepDevices.map((csd: { deviceId: number }) => csd.deviceId),
+      devices: step.cueStepDevices.map((csd) => csd.deviceId),
+      fixtures: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
     }));
 
     // Initialize execution status
@@ -168,30 +174,32 @@ class CueExecutionService {
   /**
    * Execute a single step with timing
    */
-  private async executeStep(step: CueStepWithDevices): Promise<void> {
+  private async executeStep(step: CueStepWithTargets): Promise<void> {
     return new Promise((resolve) => {
-      // Wait until timeOffset
       const startTimeout = setTimeout(async () => {
         this.activeTimeouts.delete(startTimeout);
         this.executionStatus.currentStep = step.order;
 
-        // Execute transition for each device in parallel
-        await Promise.all(
-          step.devices.map((deviceId) => this.executeTransition(step, deviceId))
+        const devicePromises = step.devices.map((deviceId) =>
+          this.executeDeviceTransition(step, deviceId)
         );
+        const fixturePromises = step.fixtures.map((fixtureId) =>
+          this.executeFixtureTransition(step, fixtureId)
+        );
+        await Promise.all([...devicePromises, ...fixturePromises]);
 
         resolve();
-      }, step.timeOffset * 1000); // Convert seconds to milliseconds
+      }, step.timeOffset * 1000);
 
       this.activeTimeouts.add(startTimeout);
     });
   }
 
   /**
-   * Execute a transition for a specific device
+   * Execute a transition for a WLED device
    */
-  private async executeTransition(
-    step: CueStepWithDevices,
+  private async executeDeviceTransition(
+    step: CueStepWithTargets,
     deviceId: number
   ): Promise<void> {
     // Stop any existing transition for this device
@@ -357,6 +365,108 @@ class CueExecutionService {
   }
 
   /**
+   * Execute a transition for a DMX fixture
+   */
+  private async executeFixtureTransition(
+    step: CueStepWithTargets,
+    fixtureId: number
+  ): Promise<void> {
+    const existing = this.fixtureTransitionFrames.get(fixtureId);
+    if (existing) {
+      clearInterval(existing);
+      this.fixtureTransitionFrames.delete(fixtureId);
+    }
+
+    const startColor = step.startColor.length >= 4
+      ? step.startColor
+      : [0, 0, 0, 0];
+    const targetColor = step.targetColor && step.targetColor.length >= 4
+      ? step.targetColor
+      : [255, 255, 255, 255];
+    const startBrightness = step.startBrightness ?? 0;
+    const targetBrightness = step.targetBrightness ?? 255;
+
+    const fixture = await prisma.dmxFixture.findUnique({
+      where: { id: fixtureId },
+    });
+    if (!fixture) {
+      console.error(`Fixture ${fixtureId} not found`);
+      return;
+    }
+
+    const channelPurposes = (fixture.channelPurposes as string[]) ?? [];
+    const purposes = Array.isArray(channelPurposes) && channelPurposes.length === fixture.channelCount
+      ? channelPurposes
+      : Array(fixture.channelCount).fill("dimmer");
+
+    if (step.turnOff) {
+      const values = buildFixtureChannelValues(
+        purposes,
+        [0, 0, 0, 0],
+        0,
+        true
+      );
+      await sendFixtureDmx(fixtureId, values);
+      return;
+    }
+
+    if (step.useWledEffect && step.wledEffectId != null) {
+      const primaryColor: [number, number, number, number] =
+        step.targetColor && step.targetColor.length >= 4
+          ? [step.targetColor[0], step.targetColor[1], step.targetColor[2], step.targetColor[3] ?? 0]
+          : [255, 255, 255, 0];
+      const values = buildFixtureChannelValues(
+        purposes,
+        primaryColor,
+        step.targetBrightness ?? 255,
+        false
+      );
+      await sendFixtureDmx(fixtureId, values);
+      return;
+    }
+
+    const durationMs = step.transitionDuration * 1000;
+    const numFrames = Math.ceil(durationMs / this.FRAME_INTERVAL);
+    let currentFrame = 0;
+
+    const interval = setInterval(async () => {
+      currentFrame += 1;
+      const progress = Math.min(currentFrame / numFrames, 1.0);
+
+      const currentColor: [number, number, number, number] = [
+        Math.round(startColor[0] + (targetColor[0] - startColor[0]) * progress),
+        Math.round(startColor[1] + (targetColor[1] - startColor[1]) * progress),
+        Math.round(startColor[2] + (targetColor[2] - startColor[2]) * progress),
+        Math.round(startColor[3] + (targetColor[3] - startColor[3]) * progress),
+      ];
+      const currentBrightness = Math.round(
+        startBrightness + (targetBrightness - startBrightness) * progress
+      );
+
+      const values = buildFixtureChannelValues(
+        purposes,
+        currentColor,
+        currentBrightness,
+        false
+      );
+      try {
+        await sendFixtureDmx(fixtureId, values);
+      } catch (err) {
+        console.error(`Failed to update fixture ${fixtureId}:`, err);
+      }
+
+      if (progress >= 1.0) {
+        clearInterval(interval);
+        this.fixtureTransitionFrames.delete(fixtureId);
+        this.activeIntervals.delete(interval);
+      }
+    }, this.FRAME_INTERVAL);
+
+    this.activeIntervals.add(interval);
+    this.fixtureTransitionFrames.set(fixtureId, interval as unknown as NodeJS.Timeout);
+  }
+
+  /**
    * Stop current execution
    */
   stopExecution(): void {
@@ -368,6 +478,7 @@ class CueExecutionService {
     this.activeIntervals.forEach((interval) => clearInterval(interval));
     this.activeIntervals.clear();
     this.transitionFrames.clear();
+    this.fixtureTransitionFrames.clear();
 
     // Reset execution status
     this.executionStatus = {

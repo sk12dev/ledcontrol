@@ -26,8 +26,12 @@ const stepSchemaBase = z.object({
   wledEffectSpeed: z.number().int().min(0).max(255).optional().nullable(),
   wledEffectIntensity: z.number().int().min(0).max(255).optional().nullable(),
   wledPaletteId: z.number().int().min(0).optional().nullable(),
-  deviceIds: z.array(z.number().int().positive()).min(1),
-});
+  deviceIds: z.array(z.number().int().positive()).default([]),
+  fixtureIds: z.array(z.number().int().positive()).default([]),
+}).refine(
+  (step) => step.deviceIds.length > 0 || step.fixtureIds.length > 0,
+  { message: "Each step must have at least one device or fixture" }
+);
 
 const stepRefine = (step: z.infer<typeof stepSchemaBase>) => {
   if (step.turnOff) return true;
@@ -104,6 +108,18 @@ cuesRouter.get("/", async (req: Request, res: Response) => {
                 },
               },
             },
+            cueStepFixtures: {
+              include: {
+                fixture: {
+                  select: {
+                    id: true,
+                    name: true,
+                    startAddress: true,
+                    channelCount: true,
+                  },
+                },
+              },
+            },
           },
           orderBy: {
             order: "asc",
@@ -151,6 +167,18 @@ cuesRouter.get("/:id", async (req: Request, res: Response) => {
                 },
               },
             },
+            cueStepFixtures: {
+              include: {
+                fixture: {
+                  select: {
+                    id: true,
+                    name: true,
+                    startAddress: true,
+                    channelCount: true,
+                  },
+                },
+              },
+            },
           },
           orderBy: {
             order: "asc",
@@ -184,17 +212,26 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Show ID not found" });
     }
 
-    // Validate that all device IDs exist
-    const deviceIds = validatedData.steps.flatMap((step) => step.deviceIds);
+    const deviceIds = validatedData.steps.flatMap((step) => step.deviceIds ?? []);
+    const fixtureIds = validatedData.steps.flatMap((step) => step.fixtureIds ?? []);
     const uniqueDeviceIds = [...new Set(deviceIds)];
-    const devices = await prisma.device.findMany({
-      where: {
-        id: { in: uniqueDeviceIds },
-      },
-    });
+    const uniqueFixtureIds = [...new Set(fixtureIds)];
 
-    if (devices.length !== uniqueDeviceIds.length) {
-      return res.status(400).json({ error: "One or more device IDs not found" });
+    if (uniqueDeviceIds.length > 0) {
+      const devices = await prisma.device.findMany({
+        where: { id: { in: uniqueDeviceIds } },
+      });
+      if (devices.length !== uniqueDeviceIds.length) {
+        return res.status(400).json({ error: "One or more device IDs not found" });
+      }
+    }
+    if (uniqueFixtureIds.length > 0) {
+      const fixtures = await prisma.dmxFixture.findMany({
+        where: { id: { in: uniqueFixtureIds } },
+      });
+      if (fixtures.length !== uniqueFixtureIds.length) {
+        return res.status(400).json({ error: "One or more fixture IDs not found" });
+      }
     }
 
     // Create cue with steps and device assignments
@@ -220,8 +257,13 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
             wledEffectIntensity: step.wledEffectIntensity ?? null,
             wledPaletteId: step.wledPaletteId ?? null,
             cueStepDevices: {
-              create: step.deviceIds.map((deviceId) => ({
+              create: (step.deviceIds ?? []).map((deviceId) => ({
                 deviceId,
+              })),
+            },
+            cueStepFixtures: {
+              create: (step.fixtureIds ?? []).map((fixtureId) => ({
+                fixtureId,
               })),
             },
           })),
@@ -289,18 +331,27 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Cue not found" });
     }
 
-    // If steps are being updated, validate device IDs
     if (validatedData.steps) {
-      const deviceIds = validatedData.steps.flatMap((step) => step.deviceIds);
+      const deviceIds = validatedData.steps.flatMap((step) => step.deviceIds ?? []);
+      const fixtureIds = validatedData.steps.flatMap((step) => step.fixtureIds ?? []);
       const uniqueDeviceIds = [...new Set(deviceIds)];
-      const devices = await prisma.device.findMany({
-        where: {
-          id: { in: uniqueDeviceIds },
-        },
-      });
+      const uniqueFixtureIds = [...new Set(fixtureIds)];
 
-      if (devices.length !== uniqueDeviceIds.length) {
-        return res.status(400).json({ error: "One or more device IDs not found" });
+      if (uniqueDeviceIds.length > 0) {
+        const devices = await prisma.device.findMany({
+          where: { id: { in: uniqueDeviceIds } },
+        });
+        if (devices.length !== uniqueDeviceIds.length) {
+          return res.status(400).json({ error: "One or more device IDs not found" });
+        }
+      }
+      if (uniqueFixtureIds.length > 0) {
+        const fixtures = await prisma.dmxFixture.findMany({
+          where: { id: { in: uniqueFixtureIds } },
+        });
+        if (fixtures.length !== uniqueFixtureIds.length) {
+          return res.status(400).json({ error: "One or more fixture IDs not found" });
+        }
       }
 
       // Delete existing steps and create new ones
@@ -344,6 +395,9 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
           cueStepDevices: {
             create: Array<{ deviceId: number }>;
           };
+          cueStepFixtures: {
+            create: Array<{ fixtureId: number }>;
+          };
         }>;
       };
     } = {};
@@ -371,8 +425,13 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
           wledEffectIntensity: step.wledEffectIntensity ?? null,
           wledPaletteId: step.wledPaletteId ?? null,
           cueStepDevices: {
-            create: step.deviceIds.map((deviceId) => ({
+            create: (step.deviceIds ?? []).map((deviceId) => ({
               deviceId,
+            })),
+          },
+          cueStepFixtures: {
+            create: (step.fixtureIds ?? []).map((fixtureId) => ({
+              fixtureId,
             })),
           },
         })),
@@ -399,6 +458,18 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
                     id: true,
                     name: true,
                     ipAddress: true,
+                  },
+                },
+              },
+            },
+            cueStepFixtures: {
+              include: {
+                fixture: {
+                  select: {
+                    id: true,
+                    name: true,
+                    startAddress: true,
+                    channelCount: true,
                   },
                 },
               },
