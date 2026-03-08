@@ -144,7 +144,7 @@ class ConnectionManager {
 
     // Check all unchecked devices
     if (uncheckedDevices.length > 0) {
-      console.log(`[ConnectionManager] Checking unchecked devices:`, uncheckedDevices.map(d => d.id));
+      console.log(`[ConnectionManager] Checking unchecked devices:`, uncheckedDevices.map((d: { id: number }) => d.id));
       await Promise.all(
         uncheckedDevices.map((device: { id: number }) => this.checkDeviceConnection(device.id))
       );
