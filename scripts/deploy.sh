@@ -141,8 +141,8 @@ fi
 # --- Build ---
 echo ""
 echo "📦 Installing dependencies..."
-npm install
-# Backend needs devDependencies (@types/*) for tsc - ensure they install even if NODE_ENV=production
+# Root and backend need devDependencies (tsc, vite, @types/*) for build - ensure they install even if NODE_ENV=production
+npm install --include=dev
 cd backend && npm install --include=dev && cd ..
 
 echo "🔧 Generating Prisma Client..."
