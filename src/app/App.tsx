@@ -168,7 +168,6 @@ export default function App() {
 
   const connectedDevices = getConnectedDevices();
   const connectedCount = connectedDevices.length;
-  const totalDeviceCount = devices.length;
   const isLoading = cuesLoading || devicesLoading || showsLoading || cueListsLoading;
 
   // Find running cue name
@@ -461,7 +460,33 @@ export default function App() {
                 </Button>
               </nav>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 text-sm">
+                <div>
+                  <span className="text-zinc-500 mr-1">Running:</span>
+                  <span className="text-white font-medium">
+                    {runningCue && executionStatus?.isRunning
+                      ? `${runningCue.name}${elapsedTime > 0 ? ` (${elapsedTime}s)` : ""}`
+                      : "None"}
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-zinc-700" />
+                <div>
+                  <span className="text-zinc-500 mr-1">State:</span>
+                  <span className="text-white font-medium">
+                    {currentStateCue ? currentStateCue.name : "None"}
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-900/50 text-red-400 hover:bg-red-900/30 hover:text-red-300"
+                onClick={handleEmergencyBlackout}
+                disabled={connectedCount === 0 || isBlackingOut}
+              >
+                {isBlackingOut ? "..." : "Blackout"}
+              </Button>
               <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white">
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
@@ -480,7 +505,7 @@ export default function App() {
               <div className="space-y-6 pr-4">
                 <div>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold">Lighting Devices</h2>
+                    <h2 className="text-lg font-semibold">WLED Devices</h2>
                     <Button 
                       size="sm" 
                       variant="outline" 
@@ -614,7 +639,7 @@ export default function App() {
           />
 
           {/* Center Panel - Controls */}
-          <div className="col-span-6 space-y-6">
+          <div className="col-span-9 space-y-6">
             <Tabs defaultValue="cues" className="w-full">
               <TabsList className="grid w-full grid-cols-3 bg-zinc-900">
                 <TabsTrigger value="cues">Cues</TabsTrigger>
@@ -678,188 +703,81 @@ export default function App() {
             </Tabs>
           </div>
 
-          {/* Right Panel - Properties */}
-          <div className="col-span-3">
-            <div className="bg-zinc-900/80 border border-zinc-800 rounded-lg p-4 backdrop-blur-sm">
-              <h2 className="text-lg font-semibold mb-4">Quick Controls</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-zinc-400 mb-2 block">Master Brightness</label>
-                  <div className="flex items-center gap-3">
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="100" 
-                      defaultValue="100"
-                      className="flex-1 h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer 
-                               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 
-                               [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-emerald-500 
-                               [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer"
-                    />
-                    <span className="text-sm text-zinc-400 w-12 text-right">100%</span>
+          {/* Emergency Blackout Confirmation Dialog */}
+          <AlertDialog open={isBlackoutDialogOpen} onOpenChange={setIsBlackoutDialogOpen}>
+            <AlertDialogContent className="bg-zinc-900 border-zinc-800">
+              <AlertDialogHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div>
+                    <AlertDialogTitle className="text-white">
+                      Emergency Blackout
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-zinc-400 mt-1">
+                      This will immediately power off all {connectedCount} connected lighting device{connectedCount !== 1 ? 's' : ''}.
+                    </AlertDialogDescription>
                   </div>
                 </div>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="gap-3">
+                <AlertDialogCancel 
+                  disabled={isBlackingOut}
+                  className="bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700"
+                >
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={confirmBlackout}
+                  disabled={isBlackingOut}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isBlackingOut ? "Turning Off..." : "Turn Off All Devices"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
-                <div className="pt-4 border-t border-zinc-800">
-                  <h3 className="text-sm font-medium mb-3">Running Cue</h3>
-                  <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
-                    {runningCue && executionStatus?.isRunning ? (
-                      <>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-white">{runningCue.name}</span>
-                        </div>
-                        <p className="text-xs text-zinc-400">
-                          {elapsedTime}s elapsed
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">No running cue</span>
-                        </div>
-                        <p className="text-xs text-zinc-400">Select a cue to activate</p>
-                      </>
-                    )}
+          {/* Delete Cue Confirmation Dialog */}
+          <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent className="bg-zinc-900 border-zinc-800">
+              <AlertDialogHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div>
+                    <AlertDialogTitle className="text-white">
+                      Delete Cue
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-zinc-400 mt-1">
+                      {deleteCueId !== null && (
+                        <>Are you sure you want to delete "{cues.find(c => c.id === deleteCueId)?.name || 'this cue'}"? This action cannot be undone.</>
+                      )}
+                    </AlertDialogDescription>
                   </div>
                 </div>
-
-                <div className="pt-4 border-t border-zinc-800">
-                  <h3 className="text-sm font-medium mb-3">Current State</h3>
-                  <div className="bg-zinc-950/50 rounded-lg p-3 border border-zinc-800">
-                    {currentStateCue ? (
-                      <>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-white">{currentStateCue.name}</span>
-                        </div>
-                        <p className="text-xs text-zinc-400">Last executed cue</p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">No state set</span>
-                        </div>
-                        <p className="text-xs text-zinc-400">Execute a cue to set state</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-zinc-800">
-                  <h3 className="text-sm font-medium mb-3">System Status</h3>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400">Connected Devices</span>
-                      <span className={connectedCount === totalDeviceCount && totalDeviceCount > 0 ? "text-emerald-400" : "text-yellow-400"}>
-                        {connectedCount} / {totalDeviceCount}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400">DMX Universe</span>
-                      <span className="text-white">Universe 1</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400">Frame Rate</span>
-                      <span className="text-white">44 FPS</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400">Status</span>
-                      <span className={`flex items-center gap-1 ${connectedCount > 0 ? "text-emerald-400" : "text-zinc-400"}`}>
-                        <div className={`w-2 h-2 rounded-full ${connectedCount > 0 ? "bg-emerald-400 animate-pulse" : "bg-zinc-400"}`} />
-                        {connectedCount > 0 ? "Online" : "Offline"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-zinc-800">
-                  <Button 
-                    className="w-full bg-red-600 hover:bg-red-700"
-                    onClick={handleEmergencyBlackout}
-                    disabled={connectedCount === 0 || isBlackingOut}
-                  >
-                    {isBlackingOut ? "Turning Off..." : "Emergency Blackout"}
-                  </Button>
-                </div>
-
-                {/* Emergency Blackout Confirmation Dialog */}
-                <AlertDialog open={isBlackoutDialogOpen} onOpenChange={setIsBlackoutDialogOpen}>
-                  <AlertDialogContent className="bg-zinc-900 border-zinc-800">
-                    <AlertDialogHeader>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
-                          <AlertTriangle className="w-5 h-5 text-red-500" />
-                        </div>
-                        <div>
-                          <AlertDialogTitle className="text-white">
-                            Emergency Blackout
-                          </AlertDialogTitle>
-                          <AlertDialogDescription className="text-zinc-400 mt-1">
-                            This will immediately power off all {connectedCount} connected lighting device{connectedCount !== 1 ? 's' : ''}.
-                          </AlertDialogDescription>
-                        </div>
-                      </div>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter className="gap-3">
-                      <AlertDialogCancel 
-                        disabled={isBlackingOut}
-                        className="bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700"
-                      >
-                        Cancel
-                      </AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={confirmBlackout}
-                        disabled={isBlackingOut}
-                        className="bg-red-600 hover:bg-red-700 text-white"
-                      >
-                        {isBlackingOut ? "Turning Off..." : "Turn Off All Devices"}
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-
-                {/* Delete Cue Confirmation Dialog */}
-                <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                  <AlertDialogContent className="bg-zinc-900 border-zinc-800">
-                    <AlertDialogHeader>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
-                          <AlertTriangle className="w-5 h-5 text-red-500" />
-                        </div>
-                        <div>
-                          <AlertDialogTitle className="text-white">
-                            Delete Cue
-                          </AlertDialogTitle>
-                          <AlertDialogDescription className="text-zinc-400 mt-1">
-                            {deleteCueId !== null && (
-                              <>Are you sure you want to delete "{cues.find(c => c.id === deleteCueId)?.name || 'this cue'}"? This action cannot be undone.</>
-                            )}
-                          </AlertDialogDescription>
-                        </div>
-                      </div>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter className="gap-3">
-                      <AlertDialogCancel 
-                        onClick={() => {
-                          setIsDeleteDialogOpen(false);
-                          setDeleteCueId(null);
-                        }}
-                        className="bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700"
-                      >
-                        Cancel
-                      </AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={confirmDeleteCue}
-                        className="bg-red-600 hover:bg-red-700 text-white"
-                      >
-                        Delete
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </div>
-          </div>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="gap-3">
+                <AlertDialogCancel 
+                  onClick={() => {
+                    setIsDeleteDialogOpen(false);
+                    setDeleteCueId(null);
+                  }}
+                  className="bg-zinc-800 border-zinc-700 text-zinc-300 hover:bg-zinc-700"
+                >
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={confirmDeleteCue}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
@@ -867,7 +785,7 @@ export default function App() {
       <Sheet open={isCueDrawerOpen} onOpenChange={setIsCueDrawerOpen}>
         <SheetContent 
           side="right" 
-          className="w-[50vw] min-w-[50vw] max-w-[50vw] sm:w-[50vw] sm:min-w-[50vw] sm:max-w-[50vw] bg-zinc-900 border-zinc-800 p-0 flex flex-col"
+          className="w-screen max-w-none sm:max-w-none bg-zinc-900 border-zinc-800 p-0 flex flex-col"
           style={{ 
             height: '100vh',
             maxHeight: '100vh',
