@@ -6,7 +6,7 @@ import { cueExecutionService } from "../services/cueExecutionService.js";
 
 export const cuesRouter = Router();
 
-// Validation schemas - base object so we can .extend() (refined schema has no .extend())
+// Base object schema (plain z.object so we can .extend() - refined schemas have no .extend())
 const stepSchemaBase = z.object({
   order: z.number().int().min(0),
   timeOffset: z.coerce.number().min(0),
@@ -28,10 +28,7 @@ const stepSchemaBase = z.object({
   wledPaletteId: z.number().int().min(0).optional().nullable(),
   deviceIds: z.array(z.number().int().positive()).default([]),
   fixtureIds: z.array(z.number().int().positive()).default([]),
-}).refine(
-  (step) => step.deviceIds.length > 0 || step.fixtureIds.length > 0,
-  { message: "Each step must have at least one device or fixture" }
-);
+});
 
 const stepRefine = (step: z.infer<typeof stepSchemaBase>) => {
   if (step.turnOff) return true;
@@ -39,9 +36,16 @@ const stepRefine = (step: z.infer<typeof stepSchemaBase>) => {
   return step.targetColor != null || step.targetBrightness != null;
 };
 
-const stepSchema = stepSchemaBase.refine(stepRefine, {
-  message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)",
-});
+const deviceFixtureRefine = (step: z.infer<typeof stepSchemaBase>) =>
+  step.deviceIds.length > 0 || step.fixtureIds.length > 0;
+
+const stepSchema = stepSchemaBase
+  .refine(deviceFixtureRefine, {
+    message: "Each step must have at least one device or fixture",
+  })
+  .refine(stepRefine, {
+    message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)",
+  });
 
 const createCueSchema = z.object({
   name: z.string().min(1).max(255),
@@ -51,11 +55,16 @@ const createCueSchema = z.object({
   steps: z.array(stepSchema).min(1),
 });
 
-const updateStepSchema = stepSchemaBase.extend({
-  id: z.number().int().positive().optional(),
-}).refine(stepRefine, {
-  message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)",
-});
+const updateStepSchema = stepSchemaBase
+  .extend({
+    id: z.number().int().positive().optional(),
+  })
+  .refine(deviceFixtureRefine, {
+    message: "Each step must have at least one device or fixture",
+  })
+  .refine(stepRefine, {
+    message: "Step must have turnOff, (useWledEffect with wledEffectId), or (targetColor/targetBrightness)",
+  });
 
 const updateCueSchema = z.object({
   name: z.string().min(1).max(255).optional(),
