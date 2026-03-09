@@ -134,6 +134,19 @@ model ArtNetNode {
   @@map("art_net_nodes")
 }
 
+// DMX Fixture Group - Groups fixtures for batch selection in cues
+model DmxFixtureGroup {
+  id          Int          @id @default(autoincrement())
+  name        String       @db.VarChar(255)
+  description String?      @db.Text
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamp
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamp
+
+  fixtures    DmxFixture[]
+
+  @@map("dmx_fixture_groups")
+}
+
 // DMX Fixture model - Logical DMX device with flexible channel mapping
 model DmxFixture {
   id              Int      @id @default(autoincrement())
@@ -146,8 +159,9 @@ model DmxFixture {
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp
 
   // Relations
-  artNetNode    ArtNetNode     @relation(fields: [artNetNodeId], references: [id], onDelete: Cascade)
-  cueStepFixtures CueStepFixture[]
+  artNetNode       ArtNetNode         @relation(fields: [artNetNodeId], references: [id], onDelete: Cascade)
+  cueStepFixtures  CueStepFixture[]
+  groups           DmxFixtureGroup[]
 
   @@index([artNetNodeId])
   @@map("dmx_fixtures")

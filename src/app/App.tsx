@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, Settings, Zap, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Plus, Settings, Zap, AlertTriangle, ArrowLeft, Edit2, Network, Aperture, ExternalLink } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import {
@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/app/components/ui/alert-dialog";
 import { LightingDevice } from "@/app/components/LightingDevice";
-import { CueCard } from "@/app/components/CueCard";
+import { CueTable, type CueRow } from "@/app/components/CueTable";
 import { DeviceModal } from "@/app/components/DeviceModal";
 import { ArtNetNodeModal } from "@/app/components/ArtNetNodeModal";
 import { DmxFixtureModal } from "@/app/components/DmxFixtureModal";
@@ -126,18 +126,17 @@ export default function App() {
     });
   }, [devices, getDeviceConnectionStatus, getDeviceState]);
 
-  // Convert cues to CueCard format
-  const cueCards = useMemo(() => {
+  // Convert cues to table row format
+  const cueRows: CueRow[] = useMemo(() => {
     return cues.map((cue) => {
-      // Extract preview colors from cue steps
       const previewColors: string[] = [];
       if (cue.cueSteps && cue.cueSteps.length > 0) {
         cue.cueSteps.forEach((step) => {
           if (step.targetColor) {
             const [r, g, b] = step.targetColor;
             const hex = `#${[r, g, b].map(x => {
-              const hex = x.toString(16);
-              return hex.length === 1 ? "0" + hex : hex;
+              const h = x.toString(16);
+              return h.length === 1 ? "0" + h : h;
             }).join("")}`;
             if (!previewColors.includes(hex)) {
               previewColors.push(hex);
@@ -145,13 +144,11 @@ export default function App() {
           }
         });
       }
-      
-      // Calculate total duration from steps
+
       const duration = cue.cueSteps && cue.cueSteps.length > 0
         ? Math.max(...cue.cueSteps.map(s => (s.timeOffset || 0) + (s.transitionDuration || 0)))
         : 0;
-      
-      // Count unique devices + fixtures
+
       const deviceIds = cue.cueSteps?.flatMap(s => s.cueStepDevices?.map(csd => `d:${csd.deviceId}`) || []) ?? [];
       const fixtureIds = cue.cueSteps?.flatMap(s => s.cueStepFixtures?.map(csf => `f:${csf.fixtureId}`) || []) ?? [];
       const deviceCount = new Set([...deviceIds, ...fixtureIds]).size;
@@ -159,9 +156,12 @@ export default function App() {
       return {
         id: cue.id.toString(),
         name: cue.name,
+        description: cue.description || "",
+        stepsCount: cue.cueSteps?.length ?? 0,
         duration: Math.round(duration),
         deviceCount,
         previewColors: previewColors.length > 0 ? previewColors : ["#1a1a1a"],
+        createdAt: cue.createdAt ?? "",
       };
     });
   }, [cues]);
@@ -506,14 +506,25 @@ export default function App() {
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold">WLED Devices</h2>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="border-zinc-800 text-zinc-400 hover:text-white"
-                      onClick={handleAddDevice}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-zinc-500 hover:text-white"
+                        onClick={() => navigate("/devices/wled")}
+                        title="Manage WLED devices"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-zinc-800 text-zinc-400 hover:text-white"
+                        onClick={handleAddDevice}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-3">
                     {isLoading ? (
@@ -538,17 +549,28 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="border-t border-zinc-800 pt-6">
+                <div className="pt-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold">Art-Net Nodes</h2>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="border-zinc-800 text-zinc-400 hover:text-white"
-                      onClick={handleAddNode}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-zinc-500 hover:text-white"
+                        onClick={() => navigate("/devices/artnet")}
+                        title="Manage Art-Net nodes"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-zinc-800 text-zinc-400 hover:text-white"
+                        onClick={handleAddNode}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {nodes.length === 0 ? (
@@ -561,12 +583,17 @@ export default function App() {
                           key={node.id}
                           className="flex items-center justify-between p-2 rounded-lg bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700"
                         >
-                          <div>
-                            <p className="text-sm font-medium">{node.name}</p>
-                            <p className="text-xs text-zinc-500">{node.ipAddress} (S{node.subnet}/U{node.universe})</p>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-md bg-blue-600/20 flex items-center justify-center flex-shrink-0">
+                              <Network className="w-4 h-4 text-blue-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{node.name}</p>
+                              <p className="text-xs text-zinc-500">{node.ipAddress} (S{node.subnet}/U{node.universe})</p>
+                            </div>
                           </div>
-                          <Button size="sm" variant="ghost" className="text-zinc-400" onClick={() => handleEditNode(node)}>
-                            Edit
+                          <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white" onClick={() => handleEditNode(node)}>
+                            <Edit2 className="w-4 h-4" />
                           </Button>
                         </div>
                       ))
@@ -577,15 +604,26 @@ export default function App() {
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold">DMX Fixtures</h2>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="border-zinc-800 text-zinc-400 hover:text-white"
-                      onClick={handleAddFixture}
-                      disabled={nodes.length === 0}
-                    >
-                      <Plus className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 text-zinc-500 hover:text-white"
+                        onClick={() => navigate("/devices/dmx")}
+                        title="Manage DMX fixtures"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-zinc-800 text-zinc-400 hover:text-white"
+                        onClick={handleAddFixture}
+                        disabled={nodes.length === 0}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {fixtures.length === 0 ? (
@@ -598,12 +636,17 @@ export default function App() {
                           key={fixture.id}
                           className="flex items-center justify-between p-2 rounded-lg bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700"
                         >
-                          <div>
-                            <p className="text-sm font-medium">{fixture.name}</p>
-                            <p className="text-xs text-zinc-500">Ch {fixture.startAddress}+{fixture.channelCount}</p>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-md bg-amber-600/20 flex items-center justify-center flex-shrink-0">
+                              <Aperture className="w-4 h-4 text-amber-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{fixture.name}</p>
+                              <p className="text-xs text-zinc-500">Ch {fixture.startAddress}+{fixture.channelCount}</p>
+                            </div>
                           </div>
-                          <Button size="sm" variant="ghost" className="text-zinc-400" onClick={() => handleEditFixture(fixture)}>
-                            Edit
+                          <Button size="sm" variant="ghost" className="text-zinc-400 hover:text-white" onClick={() => handleEditFixture(fixture)}>
+                            <Edit2 className="w-4 h-4" />
                           </Button>
                         </div>
                       ))
@@ -648,7 +691,7 @@ export default function App() {
               </TabsList>
               <TabsContent value="cues" className="mt-4 space-y-3">
                 <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-zinc-400">{cueCards.length} cues available</p>
+                  <p className="text-sm text-zinc-400">{cueRows.length} cues available</p>
                   <Button 
                     size="sm" 
                     className="bg-emerald-600 hover:bg-emerald-700"
@@ -660,30 +703,21 @@ export default function App() {
                 </div>
                 {isLoading ? (
                   <div className="text-center py-12 text-zinc-500">Loading cues...</div>
-                ) : cueCards.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    {cueCards.map((cue) => (
-                      <CueCard 
-                        key={cue.id} 
-                        {...cue}
-                        onPlay={async () => {
-                          try {
-                            await executeCue(parseInt(cue.id));
-                            // Refresh device states after cue execution
-                            // Wait a bit for the cue to start executing
-                            setTimeout(() => {
-                              refreshDeviceStates();
-                            }, 500);
-                          } catch (err) {
-                            console.error("Failed to execute cue:", err);
-                          }
-                        }}
-                        onEdit={() => handleEditCue(parseInt(cue.id))}
-                        onCopy={() => handleCopyCue(parseInt(cue.id))}
-                        onDelete={() => handleDeleteCueClick(parseInt(cue.id))}
-                      />
-                    ))}
-                  </div>
+                ) : cueRows.length > 0 ? (
+                  <CueTable
+                    rows={cueRows}
+                    onPlay={async (id) => {
+                      try {
+                        await executeCue(id);
+                        setTimeout(() => { refreshDeviceStates(); }, 500);
+                      } catch (err) {
+                        console.error("Failed to execute cue:", err);
+                      }
+                    }}
+                    onEdit={handleEditCue}
+                    onCopy={handleCopyCue}
+                    onDelete={handleDeleteCueClick}
+                  />
                 ) : (
                   <div className="text-center py-12 text-zinc-500">
                     No cues available. Create a new cue to get started.

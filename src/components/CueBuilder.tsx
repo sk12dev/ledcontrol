@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useMultiDevice } from "../hooks/useMultiDevice";
 import { useDmxFixtures } from "../hooks/useDmxFixtures";
+import { useFixtureGroups } from "../hooks/useFixtureGroups";
 import { useShows } from "../hooks/useShows";
 import {
   type Cue,
@@ -41,6 +42,7 @@ interface CueBuilderProps {
 export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }: CueBuilderProps) {
   const { devices, getDeviceConnectionStatus } = useMultiDevice();
   const { fixtures } = useDmxFixtures();
+  const { groups } = useFixtureGroups();
   const { shows } = useShows();
   const [name, setName] = useState(cue?.name || "");
   const [description, setDescription] = useState(cue?.description || "");
@@ -200,6 +202,22 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     } else {
       updateStep(stepIndex, {
         fixtureIds: [...fids, fixtureId],
+      });
+    }
+  };
+
+  const handleGroupToggle = (stepIndex: number, groupFixtureIds: number[]) => {
+    const step = steps[stepIndex];
+    const fids = step.fixtureIds ?? [];
+    const allInStep = groupFixtureIds.every((id) => fids.includes(id));
+    if (allInStep) {
+      updateStep(stepIndex, {
+        fixtureIds: fids.filter((id) => !groupFixtureIds.includes(id)),
+      });
+    } else {
+      const merged = new Set([...fids, ...groupFixtureIds]);
+      updateStep(stepIndex, {
+        fixtureIds: Array.from(merged),
       });
     }
   };
@@ -850,34 +868,68 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                   <label className="block text-sm font-medium mb-2 text-zinc-300">
                     Target Fixtures (DMX)
                   </label>
+                  {groups.length > 0 && (
+                    <div className="mb-3">
+                      <span className="text-xs text-zinc-500 block mb-1.5">Groups</span>
+                      <div className="flex flex-wrap gap-2">
+                        {groups.map((group) => {
+                          const fids = step.fixtureIds ?? [];
+                          const groupFixtureIds = group.fixtures.map((f) => f.id);
+                          const allSelected = groupFixtureIds.length > 0 && groupFixtureIds.every((id) => fids.includes(id));
+                          const someSelected = groupFixtureIds.some((id) => fids.includes(id));
+                          const variant = allSelected
+                            ? "bg-emerald-600 border-emerald-500 text-white"
+                            : someSelected
+                              ? "bg-emerald-600/60 border-emerald-500/60 text-emerald-100"
+                              : "bg-zinc-800 border-zinc-700 text-zinc-300";
+                          return (
+                            <button
+                              key={group.id}
+                              type="button"
+                              onClick={() => handleGroupToggle(index, groupFixtureIds)}
+                              className={`px-3 py-2 rounded cursor-pointer border text-sm ${variant} hover:opacity-90 transition-opacity`}
+                              title={group.description || undefined}
+                            >
+                              {group.name} ({group.fixtures.length})
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {fixtures.length === 0 ? (
                     <p className="text-zinc-400 text-sm">
                       No DMX fixtures. Add fixtures in the left panel.
                     </p>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {fixtures.map((fixture) => {
-                        const fids = step.fixtureIds ?? [];
-                        return (
-                          <label
-                            key={fixture.id}
-                            className={`px-3 py-2 rounded cursor-pointer border ${
-                              fids.includes(fixture.id)
-                                ? "bg-emerald-600 border-emerald-500 text-white"
-                                : "bg-zinc-800 border-zinc-700 text-zinc-300"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={fids.includes(fixture.id)}
-                              onChange={() => handleFixtureToggle(index, fixture.id)}
-                              className="sr-only"
-                            />
-                            {fixture.name} (Ch{fixture.startAddress})
-                          </label>
-                        );
-                      })}
-                    </div>
+                    <>
+                      {groups.length > 0 && (
+                        <span className="text-xs text-zinc-500 block mb-1.5">Individual fixtures</span>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {fixtures.map((fixture) => {
+                          const fids = step.fixtureIds ?? [];
+                          return (
+                            <label
+                              key={fixture.id}
+                              className={`px-3 py-2 rounded cursor-pointer border ${
+                                fids.includes(fixture.id)
+                                  ? "bg-emerald-600 border-emerald-500 text-white"
+                                  : "bg-zinc-800 border-zinc-700 text-zinc-300"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={fids.includes(fixture.id)}
+                                onChange={() => handleFixtureToggle(index, fixture.id)}
+                                className="sr-only"
+                              />
+                              {fixture.name} (Ch{fixture.startAddress})
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>

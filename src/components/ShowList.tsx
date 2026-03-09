@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Plus, Edit2, Trash2, FolderOpen } from "lucide-react";
+import { Plus, Edit2, Trash2, FolderOpen, Zap, Network, Aperture } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card";
 import {
@@ -140,6 +140,36 @@ export function ShowList() {
                   <p className="text-xs text-zinc-500">Select a Show</p>
                 </div>
               </div>
+              <div className="h-8 w-px bg-zinc-800" />
+              <nav className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-zinc-400 hover:text-white"
+                  onClick={() => navigate("/devices/wled")}
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  WLED Devices
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-zinc-400 hover:text-white"
+                  onClick={() => navigate("/devices/artnet")}
+                >
+                  <Network className="w-4 h-4 mr-2" />
+                  Art-Net Nodes
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-zinc-400 hover:text-white"
+                  onClick={() => navigate("/devices/dmx")}
+                >
+                  <Aperture className="w-4 h-4 mr-2" />
+                  DMX Fixtures
+                </Button>
+              </nav>
             </div>
             <Button
               onClick={handleCreateShow}

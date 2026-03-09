@@ -145,6 +145,41 @@ export interface UpdateDmxFixtureRequest {
 }
 
 /**
+ * DMX Fixture Group from backend API
+ */
+export interface DmxFixtureGroup {
+  id: number;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  fixtures: Array<{
+    id: number;
+    name: string;
+    startAddress: number;
+    channelCount: number;
+    artNetNodeId?: number;
+  }>;
+}
+
+/**
+ * Create DMX fixture group request
+ */
+export interface CreateDmxFixtureGroupRequest {
+  name: string;
+  description?: string | null;
+  fixtureIds?: number[];
+}
+
+/**
+ * Update DMX fixture group request
+ */
+export interface UpdateDmxFixtureGroupRequest {
+  name?: string;
+  description?: string | null;
+}
+
+/**
  * Create preset request
  */
 export interface CreatePresetRequest {
@@ -680,6 +715,58 @@ export const dmxFixturesApi = {
       method: "POST",
     });
     return handleResponse<{ success: boolean }>(response);
+  },
+};
+
+/**
+ * DMX Fixture Groups API
+ */
+export const dmxFixtureGroupsApi = {
+  async getAll(): Promise<DmxFixtureGroup[]> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixture-groups`);
+    return handleResponse<DmxFixtureGroup[]>(response);
+  },
+  async getById(id: number): Promise<DmxFixtureGroup> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixture-groups/${id}`);
+    return handleResponse<DmxFixtureGroup>(response);
+  },
+  async create(
+    group: CreateDmxFixtureGroupRequest
+  ): Promise<DmxFixtureGroup> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixture-groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(group),
+    });
+    return handleResponse<DmxFixtureGroup>(response);
+  },
+  async update(
+    id: number,
+    group: UpdateDmxFixtureGroupRequest
+  ): Promise<DmxFixtureGroup> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixture-groups/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(group),
+    });
+    return handleResponse<DmxFixtureGroup>(response);
+  },
+  async updateFixtures(
+    id: number,
+    fixtureIds: number[]
+  ): Promise<DmxFixtureGroup> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixture-groups/${id}/fixtures`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fixtureIds }),
+    });
+    return handleResponse<DmxFixtureGroup>(response);
+  },
+  async delete(id: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/dmx-fixture-groups/${id}`, {
+      method: "DELETE",
+    });
+    return handleResponse<void>(response);
   },
 };
 
