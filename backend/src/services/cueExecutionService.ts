@@ -11,14 +11,17 @@ import {
 } from "./wledService.js";
 import { sendFixtureDmx, buildFixtureChannelValues } from "./artnetService.js";
 
+export interface ExecuteCueOptions {
+  /** Transition duration in seconds (used for all steps; from CueListCue.fadeInSeconds when in a list). */
+  transitionDurationSeconds?: number;
+}
+
 interface CueStepWithTargets {
   id: number;
   order: number;
-  timeOffset: number;
-  transitionDuration: number;
   targetColor: number[] | null;
   targetBrightness: number | null;
-  startColor: number[]; // Empty array means use current
+  startColor: number[]; // Kept for DB; execution always uses current state for crossfade
   startBrightness: number | null;
   turnOff: boolean;
   useWledEffect: boolean;
@@ -49,40 +52,44 @@ class CueExecutionService {
 
   private activeTimeouts: Set<NodeJS.Timeout> = new Set();
   private activeIntervals: Set<NodeJS.Timeout> = new Set();
-  private transitionFrames: Map<number, NodeJS.Timeout> = new Map(); // deviceId -> timeout
-  private fixtureTransitionFrames: Map<number, NodeJS.Timeout> = new Map(); // fixtureId -> timeout
+  private transitionFrames: Map<number, NodeJS.Timeout> = new Map(); // deviceId -> interval
+  private fixtureTransitionFrames: Map<number, NodeJS.Timeout> = new Map(); // fixtureId -> interval
+  /** Last-sent state per fixture for crossfade (avoid starting from black). */
+  private fixtureLastState: Map<number, { color: number[]; brightness: number }> = new Map();
 
   // Transition update rate (30 FPS)
   private readonly FRAME_RATE = 30;
   private readonly FRAME_INTERVAL = 1000 / this.FRAME_RATE; // milliseconds
+  private readonly DEFAULT_TRANSITION_SECONDS = 1;
 
   /**
-   * Execute a cue
+   * Clear only scheduled timeouts (e.g. pending steps). Does NOT clear in-progress
+   * transition intervals, so lights keep fading. Call before executeCue when advancing
+   * in a cue list so the new cue crossfades from current output.
    */
-  async executeCue(cueId: number): Promise<void> {
+  prepareForNextCue(): void {
+    this.activeTimeouts.forEach((timeout) => clearTimeout(timeout));
+    this.activeTimeouts.clear();
+  }
+
+  /**
+   * Execute a cue (snapshot). All steps run immediately with one transition duration.
+   * Crossfade: start state is always current live state (devices via API, fixtures via cache).
+   */
+  async executeCue(cueId: number, options?: ExecuteCueOptions): Promise<void> {
     console.log(`[ExecutionService] executeCue called for cue ${cueId}`);
-    if (this.executionStatus.isRunning) {
-      console.log(`[ExecutionService] Already executing cue ${this.executionStatus.cueId}`);
-      throw new Error("A cue is already executing. Stop it first.");
-    }
+    const transitionDurationSeconds = options?.transitionDurationSeconds ?? this.DEFAULT_TRANSITION_SECONDS;
 
     console.log(`[ExecutionService] Loading cue ${cueId} from database`);
-    // Load cue with steps and devices
     const cue = await prisma.cue.findUnique({
       where: { id: cueId },
       include: {
         cueSteps: {
           include: {
-            cueStepDevices: {
-              select: { deviceId: true },
-            },
-            cueStepFixtures: {
-              select: { fixtureId: true },
-            },
+            cueStepDevices: { select: { deviceId: true } },
+            cueStepFixtures: { select: { fixtureId: true } },
           },
-          orderBy: {
-            order: "asc",
-          },
+          orderBy: { order: "asc" },
         },
       },
     });
@@ -96,10 +103,8 @@ class CueExecutionService {
       throw new Error("Cue has no steps");
     }
 
-    console.log(`[ExecutionService] Cue ${cueId} has ${cue.cueSteps.length} steps`);
-    // Prepare steps with device and fixture assignments
     const steps: CueStepWithTargets[] = cue.cueSteps.map((step: {
-      id: number; order: number; timeOffset: unknown; transitionDuration: unknown;
+      id: number; order: number;
       targetColor: number[]; targetBrightness: number | null; startColor: number[];
       startBrightness: number | null; turnOff: boolean; useWledEffect: boolean;
       wledEffectId: number | null; wledEffectSpeed: number | null;
@@ -109,8 +114,6 @@ class CueExecutionService {
     }) => ({
       id: step.id,
       order: step.order,
-      timeOffset: Number(step.timeOffset),
-      transitionDuration: Number(step.transitionDuration),
       targetColor: step.targetColor.length > 0 ? step.targetColor : null,
       targetBrightness: step.targetBrightness,
       startColor: step.startColor || [],
@@ -125,7 +128,6 @@ class CueExecutionService {
       fixtures: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
     }));
 
-    // Initialize execution status
     this.executionStatus = {
       isRunning: true,
       cueId,
@@ -134,28 +136,24 @@ class CueExecutionService {
       totalSteps: steps.length,
     };
 
-    console.log(`[ExecutionService] Execution status initialized for cue ${cueId}, ${steps.length} steps`);
-
     try {
-      // Execute all steps (they will start at their respective timeOffsets)
-      console.log(`[ExecutionService] Starting execution of ${steps.length} steps`);
-      await Promise.all(
-        steps.map((step) => {
-          console.log(`[ExecutionService] Scheduling step ${step.order} to start at ${step.timeOffset}s`);
-          return this.executeStep(step);
-        })
+      console.log(`[ExecutionService] Applying snapshot for cue ${cueId} over ${transitionDurationSeconds}s`);
+      const devicePromises = steps.flatMap((step) =>
+        step.devices.map((deviceId) =>
+          this.executeDeviceTransition(step, deviceId, transitionDurationSeconds)
+        )
       );
-      console.log(`[ExecutionService] All steps scheduled for cue ${cueId}`);
+      const fixturePromises = steps.flatMap((step) =>
+        step.fixtures.map((fixtureId) =>
+          this.executeFixtureTransition(step, fixtureId, transitionDurationSeconds)
+        )
+      );
+      await Promise.all([...devicePromises, ...fixturePromises]);
     } catch (error) {
       console.error(`[ExecutionService] Error during execution of cue ${cueId}:`, error);
       this.stopExecution();
       throw error;
     }
-
-    // Wait for all transitions to complete
-    const maxDuration = Math.max(
-      ...steps.map((step) => step.timeOffset + step.transitionDuration)
-    );
 
     const finalTimeout = setTimeout(() => {
       this.executionStatus = {
@@ -166,66 +164,37 @@ class CueExecutionService {
         totalSteps: 0,
       };
       this.activeTimeouts.delete(finalTimeout);
-    }, maxDuration * 1000);
+    }, transitionDurationSeconds * 1000);
 
     this.activeTimeouts.add(finalTimeout);
   }
 
   /**
-   * Execute a single step with timing
-   */
-  private async executeStep(step: CueStepWithTargets): Promise<void> {
-    return new Promise((resolve) => {
-      const startTimeout = setTimeout(async () => {
-        this.activeTimeouts.delete(startTimeout);
-        this.executionStatus.currentStep = step.order;
-
-        const devicePromises = step.devices.map((deviceId) =>
-          this.executeDeviceTransition(step, deviceId)
-        );
-        const fixturePromises = step.fixtures.map((fixtureId) =>
-          this.executeFixtureTransition(step, fixtureId)
-        );
-        await Promise.all([...devicePromises, ...fixturePromises]);
-
-        resolve();
-      }, step.timeOffset * 1000);
-
-      this.activeTimeouts.add(startTimeout);
-    });
-  }
-
-  /**
-   * Execute a transition for a WLED device
+   * Execute a transition for a WLED device. Always uses current live state as start (crossfade).
    */
   private async executeDeviceTransition(
     step: CueStepWithTargets,
-    deviceId: number
+    deviceId: number,
+    transitionDurationSeconds: number
   ): Promise<void> {
-    // Stop any existing transition for this device
-    const existingTimeout = this.transitionFrames.get(deviceId);
-    if (existingTimeout) {
-      clearInterval(existingTimeout);
+    const existing = this.transitionFrames.get(deviceId);
+    if (existing) {
+      clearInterval(existing);
       this.transitionFrames.delete(deviceId);
     }
 
-    // If turnOff is true, turn the device off directly (executeStep already waited for timeOffset)
     if (step.turnOff) {
       try {
         await updateDeviceState(deviceId, {
           on: false,
-          transition: Math.round(step.transitionDuration * 10), // WLED transition is in 100ms units
+          transition: Math.round(transitionDurationSeconds * 10),
         });
       } catch (error) {
-        console.error(
-          `Failed to turn off device ${deviceId}:`,
-          error
-        );
+        console.error(`Failed to turn off device ${deviceId}:`, error);
       }
       return;
     }
 
-    // If useWledEffect is true, set WLED effect on the device (executeStep already waited for timeOffset)
     if (step.useWledEffect && step.wledEffectId != null) {
       const primaryColor: [number, number, number, number] =
         step.targetColor && step.targetColor.length >= 4
@@ -247,189 +216,42 @@ class CueExecutionService {
         await updateDeviceState(deviceId, {
           on: true,
           bri: step.targetBrightness ?? 255,
-          transition: Math.round(step.transitionDuration * 10),
+          transition: Math.round(transitionDurationSeconds * 10),
           seg: [segmentUpdate],
         });
       } catch (error) {
-        console.error(
-          `Failed to set effect on device ${deviceId}:`,
-          error
-        );
+        console.error(`Failed to set effect on device ${deviceId}:`, error);
       }
       return;
     }
 
-    // Get current device state if start values are not specified
-    let startColor: number[] = step.startColor;
-    let startBrightness: number | null = step.startBrightness;
-
-    if (startColor.length === 0 || !startBrightness) {
-      try {
-        const currentState = await getDeviceState(deviceId);
-        if (!startColor) {
-          // Extract color from first segment
-          if (
-            currentState.seg &&
-            currentState.seg.length > 0 &&
-            currentState.seg[0].col &&
-            currentState.seg[0].col[0]
-          ) {
-            startColor = currentState.seg[0].col[0];
-          } else {
-            startColor = [0, 0, 0, 0];
-          }
-        }
-        if (!startBrightness) {
-          startBrightness = currentState.bri;
-        }
-      } catch (error) {
-        console.error(
-          `Failed to get current state for device ${deviceId}:`,
-          error
-        );
-        // Use defaults if we can't get current state
-        if (startColor.length === 0) {
-          startColor = [0, 0, 0, 0];
-        }
-        if (!startBrightness) {
-          startBrightness = 128;
-        }
+    // Crossfade: always use current device state as start (ignore step.startColor/startBrightness)
+    let startColor: number[] = [0, 0, 0, 0];
+    let startBrightness = 128;
+    try {
+      const currentState = await getDeviceState(deviceId);
+      if (
+        currentState.seg &&
+        currentState.seg.length > 0 &&
+        currentState.seg[0].col &&
+        currentState.seg[0].col[0]
+      ) {
+        startColor = currentState.seg[0].col[0];
       }
+      startBrightness = currentState.bri;
+    } catch (error) {
+      console.error(`Failed to get current state for device ${deviceId}:`, error);
+      // Use dim default instead of black to avoid visible flash
+      startColor = [1, 1, 1, 0];
+      startBrightness = 10;
     }
 
-    // Ensure startColor has a value
-    if (startColor.length === 0) {
-      startColor = [0, 0, 0, 0];
-    }
-
-    // Determine target values
-    const targetColor = step.targetColor || startColor;
-    const targetBrightness = step.targetBrightness ?? startBrightness;
-
-    // Calculate number of frames
-    const durationMs = step.transitionDuration * 1000;
-    const numFrames = Math.ceil(durationMs / this.FRAME_INTERVAL);
-    let currentFrame = 0;
-
-    // Create interval for transition updates
-    const interval = setInterval(async () => {
-      currentFrame += 1;
-      const progress = Math.min(currentFrame / numFrames, 1.0); // Clamp to 1.0
-
-      // Interpolate values
-      const targetColorValue = targetColor || startColor;
-      const currentColor: [number, number, number, number] = [
-        Math.round(
-          startColor[0] + (targetColorValue[0] - startColor[0]) * progress
-        ),
-        Math.round(
-          startColor[1] + (targetColorValue[1] - startColor[1]) * progress
-        ),
-        Math.round(
-          startColor[2] + (targetColorValue[2] - startColor[2]) * progress
-        ),
-        Math.round(
-          startColor[3] + (targetColorValue[3] - startColor[3]) * progress
-        ),
-      ];
-
-      const currentBrightness = Math.round(
-        (startBrightness || 0) + (targetBrightness - (startBrightness || 0)) * progress
-      );
-
-      // Apply interpolated state
-      try {
-        await updateDeviceColorAndBrightness(
-          deviceId,
-          currentColor,
-          currentBrightness,
-          0 // No additional transition (we're doing it manually)
-        );
-      } catch (error) {
-        console.error(
-          `Failed to update device ${deviceId} during transition:`,
-          error
-        );
-      }
-
-      // Clean up when transition is complete
-      if (progress >= 1.0) {
-        clearInterval(interval);
-        this.transitionFrames.delete(deviceId);
-        this.activeIntervals.delete(interval);
-      }
-    }, this.FRAME_INTERVAL);
-
-    this.activeIntervals.add(interval);
-    this.transitionFrames.set(deviceId, interval as unknown as NodeJS.Timeout);
-  }
-
-  /**
-   * Execute a transition for a DMX fixture
-   */
-  private async executeFixtureTransition(
-    step: CueStepWithTargets,
-    fixtureId: number
-  ): Promise<void> {
-    const existing = this.fixtureTransitionFrames.get(fixtureId);
-    if (existing) {
-      clearInterval(existing);
-      this.fixtureTransitionFrames.delete(fixtureId);
-    }
-
-    const fixture = await prisma.dmxFixture.findUnique({
-      where: { id: fixtureId },
-      include: { artNetNode: true },
-    });
-    if (!fixture) {
-      console.error(`[ExecutionService] Fixture ${fixtureId} not found`);
-      return;
-    }
-    console.log(
-      `[ExecutionService] Step ${step.order + 1}: DMX -> fixture "${fixture.name}" (id=${fixtureId}) node ${fixture.artNetNode?.name ?? "?"} @ ${fixture.artNetNode?.ipAddress ?? "?"} universe ${fixture.artNetNode?.universe ?? "?"}`
-    );
-
-    const startColor = step.startColor.length >= 4
-      ? step.startColor
-      : [0, 0, 0, 0];
     const targetColor = step.targetColor && step.targetColor.length >= 4
       ? step.targetColor
-      : [255, 255, 255, 255];
-    const startBrightness = step.startBrightness ?? 0;
-    const targetBrightness = step.targetBrightness ?? 255;
+      : startColor;
+    const targetBrightness = step.targetBrightness ?? startBrightness;
 
-    const channelPurposes = (fixture.channelPurposes as string[]) ?? [];
-    const purposes = Array.isArray(channelPurposes) && channelPurposes.length === fixture.channelCount
-      ? channelPurposes
-      : Array(fixture.channelCount).fill("dimmer");
-
-    if (step.turnOff) {
-      const values = buildFixtureChannelValues(
-        purposes,
-        [0, 0, 0, 0],
-        0,
-        true
-      );
-      await sendFixtureDmx(fixtureId, values);
-      return;
-    }
-
-    if (step.useWledEffect && step.wledEffectId != null) {
-      const primaryColor: [number, number, number, number] =
-        step.targetColor && step.targetColor.length >= 4
-          ? [step.targetColor[0], step.targetColor[1], step.targetColor[2], step.targetColor[3] ?? 0]
-          : [255, 255, 255, 0];
-      const values = buildFixtureChannelValues(
-        purposes,
-        primaryColor,
-        step.targetBrightness ?? 255,
-        false
-      );
-      await sendFixtureDmx(fixtureId, values);
-      return;
-    }
-
-    const durationMs = step.transitionDuration * 1000;
+    const durationMs = transitionDurationSeconds * 1000;
     const numFrames = Math.ceil(durationMs / this.FRAME_INTERVAL);
     let currentFrame = 0;
 
@@ -447,14 +269,103 @@ class CueExecutionService {
         startBrightness + (targetBrightness - startBrightness) * progress
       );
 
-      const values = buildFixtureChannelValues(
-        purposes,
-        currentColor,
-        currentBrightness,
-        false
+      try {
+        await updateDeviceColorAndBrightness(deviceId, currentColor, currentBrightness, 0);
+      } catch (error) {
+        console.error(`Failed to update device ${deviceId} during transition:`, error);
+      }
+
+      if (progress >= 1.0) {
+        clearInterval(interval);
+        this.transitionFrames.delete(deviceId);
+        this.activeIntervals.delete(interval);
+      }
+    }, this.FRAME_INTERVAL);
+
+    this.activeIntervals.add(interval);
+    this.transitionFrames.set(deviceId, interval as unknown as NodeJS.Timeout);
+  }
+
+  /**
+   * Execute a transition for a DMX fixture. Uses last-sent cache as start for crossfade when available.
+   */
+  private async executeFixtureTransition(
+    step: CueStepWithTargets,
+    fixtureId: number,
+    transitionDurationSeconds: number
+  ): Promise<void> {
+    const existing = this.fixtureTransitionFrames.get(fixtureId);
+    if (existing) {
+      clearInterval(existing);
+      this.fixtureTransitionFrames.delete(fixtureId);
+    }
+
+    const fixture = await prisma.dmxFixture.findUnique({
+      where: { id: fixtureId },
+      include: { artNetNode: true },
+    });
+    if (!fixture) {
+      console.error(`[ExecutionService] Fixture ${fixtureId} not found`);
+      return;
+    }
+
+    const channelPurposes = (fixture.channelPurposes as string[]) ?? [];
+    const purposes = Array.isArray(channelPurposes) && channelPurposes.length === fixture.channelCount
+      ? channelPurposes
+      : Array(fixture.channelCount).fill("dimmer");
+
+    const targetColor = step.targetColor && step.targetColor.length >= 4
+      ? step.targetColor
+      : [255, 255, 255, 255];
+    const targetBrightness = step.targetBrightness ?? 255;
+
+    if (step.turnOff) {
+      const values = buildFixtureChannelValues(purposes, [0, 0, 0, 0], 0, true);
+      await sendFixtureDmx(fixtureId, values);
+      this.fixtureLastState.set(fixtureId, { color: [0, 0, 0, 0], brightness: 0 });
+      return;
+    }
+
+    if (step.useWledEffect && step.wledEffectId != null) {
+      const primaryColor: [number, number, number, number] =
+        step.targetColor && step.targetColor.length >= 4
+          ? [step.targetColor[0], step.targetColor[1], step.targetColor[2], step.targetColor[3] ?? 0]
+          : [255, 255, 255, 0];
+      const values = buildFixtureChannelValues(purposes, primaryColor, step.targetBrightness ?? 255, false);
+      await sendFixtureDmx(fixtureId, values);
+      this.fixtureLastState.set(fixtureId, { color: [...primaryColor], brightness: step.targetBrightness ?? 255 });
+      return;
+    }
+
+    // Crossfade: use cached last-sent state as start when available
+    const cached = this.fixtureLastState.get(fixtureId);
+    const startColor = cached && cached.color.length >= 4
+      ? cached.color
+      : [1, 1, 1, 0];
+    const startBrightness = cached?.brightness ?? 10;
+
+    const durationMs = transitionDurationSeconds * 1000;
+    const numFrames = Math.ceil(durationMs / this.FRAME_INTERVAL);
+    let currentFrame = 0;
+
+    const interval = setInterval(async () => {
+      currentFrame += 1;
+      const progress = Math.min(currentFrame / numFrames, 1.0);
+
+      const currentColor: [number, number, number, number] = [
+        Math.round(startColor[0] + (targetColor[0] - startColor[0]) * progress),
+        Math.round(startColor[1] + (targetColor[1] - startColor[1]) * progress),
+        Math.round(startColor[2] + (targetColor[2] - startColor[2]) * progress),
+        Math.round(startColor[3] + (targetColor[3] - startColor[3]) * progress),
+      ];
+      const currentBrightness = Math.round(
+        startBrightness + (targetBrightness - startBrightness) * progress
       );
+
+      const values = buildFixtureChannelValues(purposes, currentColor, currentBrightness, false);
       try {
         await sendFixtureDmx(fixtureId, values);
+        this.fixtureLastState.set(fixtureId, { color: [...currentColor], brightness: currentBrightness });
       } catch (err) {
         console.error(`Failed to update fixture ${fixtureId}:`, err);
       }

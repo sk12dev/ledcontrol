@@ -145,9 +145,7 @@ export default function App() {
         });
       }
 
-      const duration = cue.cueSteps && cue.cueSteps.length > 0
-        ? Math.max(...cue.cueSteps.map(s => (s.timeOffset || 0) + (s.transitionDuration || 0)))
-        : 0;
+      const duration = 0;
 
       const deviceIds = cue.cueSteps?.flatMap(s => s.cueStepDevices?.map(csd => `d:${csd.deviceId}`) || []) ?? [];
       const fixtureIds = cue.cueSteps?.flatMap(s => s.cueStepFixtures?.map(csf => `f:${csf.fixtureId}`) || []) ?? [];

@@ -63,13 +63,12 @@ export function CueList({ onEdit, onExecute }: CueListProps) {
           .sort((a, b) => a.order - b.order)
           .map((step) => ({
             order: step.order,
-            timeOffset: step.timeOffset,
-            transitionDuration: step.transitionDuration,
             targetColor: step.targetColor,
             targetBrightness: step.targetBrightness ?? undefined,
             startColor: step.startColor ?? undefined,
             startBrightness: step.startBrightness ?? undefined,
             deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
+            fixtureIds: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
           })),
       });
     } catch (error) {

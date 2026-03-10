@@ -246,6 +246,11 @@ export default function KioskCueListPage() {
                   >
                     <span className="mr-2 text-zinc-500">{index + 1}.</span>
                     {cueName}
+                    {(cueItem.fadeInSeconds > 0 || cueItem.fadeOutSeconds > 0 || cueItem.durationSeconds != null) && (
+                      <span className="ml-2 text-xs text-zinc-500">
+                        {[cueItem.fadeInSeconds > 0 && `fade in ${cueItem.fadeInSeconds}s`, cueItem.fadeOutSeconds > 0 && `out ${cueItem.fadeOutSeconds}s`, cueItem.durationSeconds != null ? `${cueItem.durationSeconds}s` : "∞"].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                   </button>
                 );
               })}

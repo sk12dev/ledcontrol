@@ -15,11 +15,9 @@ import { ColorPresetSelector } from "./ColorPresetSelector";
 interface CueStep {
   id?: number;
   order: number;
-  timeOffset: number;
-  transitionDuration: number;
   targetColor: [number, number, number, number] | null;
   targetBrightness: number | null;
-  startColor: [number, number, number, number] | null | []; // Empty array or null means use current
+  startColor: [number, number, number, number] | null | [];
   startBrightness: number | null;
   turnOff: boolean;
   useWledEffect: boolean;
@@ -54,8 +52,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       return cue.cueSteps.map((step) => ({
         id: step.id,
         order: step.order,
-        timeOffset: step.timeOffset,
-        transitionDuration: step.transitionDuration,
         targetColor: step.targetColor,
         targetBrightness: step.targetBrightness,
         startColor: step.startColor || null,
@@ -108,8 +104,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   const addStep = () => {
     const newStep: CueStep = {
       order: steps.length,
-      timeOffset: steps.length > 0 ? steps[steps.length - 1].timeOffset + 1 : 0,
-      transitionDuration: 1,
       targetColor: [255, 255, 255, 0],
       targetBrightness: 128,
       startColor: null,
@@ -138,8 +132,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     const stepToDuplicate = steps[index];
     const duplicatedStep: CueStep = {
       order: stepToDuplicate.order + 1,
-      timeOffset: stepToDuplicate.timeOffset + stepToDuplicate.transitionDuration,
-      transitionDuration: stepToDuplicate.transitionDuration,
       targetColor: stepToDuplicate.targetColor 
         ? [...stepToDuplicate.targetColor] as [number, number, number, number]
         : null,
@@ -270,8 +262,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         steps: steps.map((step) => ({
           ...(step.id ? { id: step.id } : {}),
           order: step.order,
-          timeOffset: step.timeOffset,
-          transitionDuration: step.transitionDuration,
           targetColor: step.targetColor,
           targetBrightness: step.targetBrightness,
           startColor: step.startColor && step.startColor.length === 4 
@@ -352,8 +342,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         steps: steps.map((step) => ({
           ...(step.id ? { id: step.id } : {}),
           order: step.order,
-          timeOffset: step.timeOffset,
-          transitionDuration: step.transitionDuration,
           targetColor: step.targetColor,
           targetBrightness: step.targetBrightness,
           startColor: step.startColor && step.startColor.length === 4 
@@ -380,15 +368,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       setTesting(false);
     }
   };
-
-  const maxTime =
-    steps.length > 0
-      ? Math.max(
-          ...steps.map(
-            (step) => step.timeOffset + step.transitionDuration
-          )
-        )
-      : 0;
 
   return (
     <div className="bg-zinc-900 rounded-lg">
@@ -515,43 +494,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                     >
                       Remove
                     </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-zinc-300">
-                      Start Delay (seconds)
-                    </label>
-                    <input
-                      type="number"
-                      value={step.timeOffset}
-                      onChange={(e) =>
-                        updateStep(index, {
-                          timeOffset: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      min="0"
-                      step="0.1"
-                      className="w-full px-3 py-2 bg-zinc-900 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-zinc-300">
-                      Transition Duration (seconds)
-                    </label>
-                    <input
-                      type="number"
-                      value={step.transitionDuration}
-                      onChange={(e) =>
-                        updateStep(index, {
-                          transitionDuration: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                      min="0"
-                      step="0.1"
-                      className="w-full px-3 py-2 bg-zinc-900 text-white rounded border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
                   </div>
                 </div>
 
@@ -938,43 +880,6 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         )}
       </div>
 
-      {/* Timeline Visualization */}
-      {steps.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-lg font-semibold mb-4 text-white">Timeline</h3>
-          <div className="relative bg-zinc-800 border border-zinc-700 rounded p-4 h-32 overflow-x-auto">
-            <div className="relative" style={{ width: `${Math.max(maxTime * 100, 600)}px` }}>
-              {steps.map((step, index) => (
-                <div
-                  key={index}
-                  className="absolute top-4 h-24 border-l-2 border-blue-500"
-                  style={{
-                    left: `${(step.timeOffset / maxTime) * 100}%`,
-                    width: `${((step.timeOffset + step.transitionDuration) / maxTime) * 100}%`,
-                  }}
-                >
-                  <div className="px-2 py-1 bg-blue-600 text-white text-xs rounded">
-                    Step {step.order + 1}
-                  </div>
-                  <div className="text-xs text-zinc-400 mt-1">
-                    {step.timeOffset}s - {step.timeOffset + step.transitionDuration}s
-                  </div>
-                </div>
-              ))}
-              {/* Time markers */}
-              {Array.from({ length: Math.ceil(maxTime) + 1 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute top-0 border-l border-zinc-700 text-xs text-zinc-400"
-                  style={{ left: `${(i / maxTime) * 100}%` }}
-                >
-                  <span className="ml-1">{i}s</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

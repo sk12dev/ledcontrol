@@ -3,6 +3,7 @@ import { useCues } from "../hooks/useCues";
 import { useShows } from "../hooks/useShows";
 import {
   type CueList,
+  type CueListEntry,
   type CreateCueListRequest,
   type UpdateCueListRequest,
 } from "../api/backendClient";
@@ -22,11 +23,16 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
   const [selectedShowId, setSelectedShowId] = useState<number | null>(
     propShowId ?? cueList?.showId ?? null
   );
-  const [selectedCueIds, setSelectedCueIds] = useState<number[]>(() => {
+  const [entries, setEntries] = useState<CueListEntry[]>(() => {
     if (cueList?.cueListCues) {
       return cueList.cueListCues
         .sort((a, b) => a.order - b.order)
-        .map((item) => item.cueId);
+        .map((item) => ({
+          cueId: item.cueId,
+          fadeInSeconds: Number(item.fadeInSeconds ?? 0),
+          fadeOutSeconds: Number(item.fadeOutSeconds ?? 0),
+          durationSeconds: item.durationSeconds != null ? Number(item.durationSeconds) : null,
+        }));
     }
     return [];
   });
@@ -50,7 +56,7 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
       return;
     }
 
-    if (selectedCueIds.length === 0) {
+    if (entries.length === 0) {
       setError("At least one cue must be selected");
       return;
     }
@@ -66,7 +72,12 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
           ? (selectedShowId !== cueList.showId ? { showId: selectedShowId } : {}) // Update if show changed
           : { showId: selectedShowId } // Required for new cue lists
         ),
-        cueIds: selectedCueIds,
+        cues: entries.map((e) => ({
+          cueId: e.cueId,
+          fadeInSeconds: e.fadeInSeconds ?? 0,
+          fadeOutSeconds: e.fadeOutSeconds ?? 0,
+          durationSeconds: e.durationSeconds ?? null,
+        })),
       };
 
       await onSave(cueListData);
@@ -80,27 +91,31 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
   };
 
   const handleCueAdd = (cueId: number) => {
-    // Always add the cue, allowing duplicates
-    setSelectedCueIds([...selectedCueIds, cueId]);
+    setEntries([...entries, { cueId, fadeInSeconds: 0, fadeOutSeconds: 0, durationSeconds: null }]);
   };
 
   const handleRemoveByIndex = (index: number) => {
-    // Remove the cue at the specific index
-    setSelectedCueIds(selectedCueIds.filter((_, i) => i !== index));
+    setEntries(entries.filter((_, i) => i !== index));
   };
 
   const handleMoveUp = (index: number) => {
     if (index === 0) return;
-    const newIds = [...selectedCueIds];
-    [newIds[index - 1], newIds[index]] = [newIds[index], newIds[index - 1]];
-    setSelectedCueIds(newIds);
+    const next = [...entries];
+    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+    setEntries(next);
   };
 
   const handleMoveDown = (index: number) => {
-    if (index === selectedCueIds.length - 1) return;
-    const newIds = [...selectedCueIds];
-    [newIds[index], newIds[index + 1]] = [newIds[index + 1], newIds[index]];
-    setSelectedCueIds(newIds);
+    if (index === entries.length - 1) return;
+    const next = [...entries];
+    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+    setEntries(next);
+  };
+
+  const updateEntryTiming = (index: number, patch: Partial<Pick<CueListEntry, "fadeInSeconds" | "fadeOutSeconds" | "durationSeconds">>) => {
+    setEntries((prev) =>
+      prev.map((e, i) => (i === index ? { ...e, ...patch } : e))
+    );
   };
 
   if (cuesLoading) {
@@ -169,7 +184,7 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
               setSelectedShowId(newShowId);
               // Clear selected cues when show changes
               if (newShowId !== selectedShowId) {
-                setSelectedCueIds([]);
+                setEntries([]);
               }
             }}
             disabled={!!cueList && !!cueList.showId} // Disable if editing existing cueList with showId
@@ -206,7 +221,7 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-600 rounded-lg p-3 bg-gray-700/50">
               {availableCues.map((cue) => {
-                const count = selectedCueIds.filter((id) => id === cue.id).length;
+                const count = entries.filter((e) => e.cueId === cue.id).length;
                 return (
                   <button
                     key={cue.id}
@@ -239,47 +254,99 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
           )}
         </div>
 
-        {/* Selected Cues Order */}
-        {selectedCueIds.length > 0 && (
+        {/* Selected Cues Order + Per-cue timing */}
+        {entries.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Cue Order (Drag to reorder or use buttons)
+              Cue Order & Timing
             </label>
-            <div className="space-y-2 border border-gray-600 rounded-lg p-3 bg-gray-700/50">
-              {selectedCueIds.map((cueId, index) => {
-                const cue = cues.find((c) => c.id === cueId);
+            <div className="space-y-3 border border-gray-600 rounded-lg p-3 bg-gray-700/50">
+              {entries.map((entry, index) => {
+                const cue = cues.find((c) => c.id === entry.cueId);
                 return (
                   <div
-                    key={`${cueId}-${index}`}
-                    className="flex items-center gap-2 p-2 bg-gray-600 rounded"
+                    key={`${entry.cueId}-${index}`}
+                    className="p-3 bg-gray-600 rounded space-y-2"
                   >
-                    <button
-                      onClick={() => handleMoveUp(index)}
-                      disabled={index === 0 || saving}
-                      className="px-2 py-1 bg-gray-500 hover:bg-gray-400 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white text-xs"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      onClick={() => handleMoveDown(index)}
-                      disabled={index === selectedCueIds.length - 1 || saving}
-                      className="px-2 py-1 bg-gray-500 hover:bg-gray-400 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white text-xs"
-                    >
-                      ↓
-                    </button>
-                    <div className="flex-1 text-white">
-                      <span className="text-xs text-gray-400 mr-2">
-                        #{index + 1}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => handleMoveUp(index)}
+                        disabled={index === 0 || saving}
+                        className="px-2 py-1 bg-gray-500 hover:bg-gray-400 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white text-xs"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => handleMoveDown(index)}
+                        disabled={index === entries.length - 1 || saving}
+                        className="px-2 py-1 bg-gray-500 hover:bg-gray-400 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white text-xs"
+                      >
+                        ↓
+                      </button>
+                      <span className="text-xs text-gray-400">#{index + 1}</span>
+                      <span className="font-medium text-white flex-1">
+                        {cue?.name || `Cue ${entry.cueId}`}
                       </span>
-                      {cue?.name || `Cue ${cueId}`}
+                      <button
+                        onClick={() => handleRemoveByIndex(index)}
+                        disabled={saving}
+                        className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-xs"
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <button
-                      onClick={() => handleRemoveByIndex(index)}
-                      disabled={saving}
-                      className="px-2 py-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-700 disabled:cursor-not-allowed rounded text-white text-xs"
-                    >
-                      Remove
-                    </button>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-0.5">Fade in (s)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={entry.fadeInSeconds ?? 0}
+                          onChange={(e) =>
+                            updateEntryTiming(index, {
+                              fadeInSeconds: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-xs"
+                          disabled={saving}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-0.5">Fade out (s)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={entry.fadeOutSeconds ?? 0}
+                          onChange={(e) =>
+                            updateEntryTiming(index, {
+                              fadeOutSeconds: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-xs"
+                          disabled={saving}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-0.5">Duration (s) — empty = ∞</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          placeholder="∞"
+                          value={entry.durationSeconds ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            updateEntryTiming(index, {
+                              durationSeconds: v === "" ? null : parseFloat(v) || 0,
+                            });
+                          }}
+                          className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-xs"
+                          disabled={saving}
+                        />
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -291,7 +358,7 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
         <div className="flex gap-3 pt-4">
           <button
             onClick={handleSave}
-            disabled={saving || !name.trim() || selectedCueIds.length === 0}
+            disabled={saving || !name.trim() || entries.length === 0}
             className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white font-medium"
           >
             {saving ? "Saving..." : cueList ? "Update" : "Create"}

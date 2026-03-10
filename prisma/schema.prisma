@@ -184,13 +184,11 @@ model CueStepFixture {
   @@map("cue_step_fixtures")
 }
 
-// CueStep model - Individual operations within a cue
+// CueStep model - Snapshot target per device/fixture (no timing; timing is on CueListCue)
 model CueStep {
   id                Int      @id @default(autoincrement())
   cueId             Int      @map("cue_id")
   order             Int      // For sorting steps
-  timeOffset        Decimal  @map("time_offset") @db.Decimal(10, 2) // Seconds - when this step starts relative to cue start
-  transitionDuration Decimal @map("transition_duration") @db.Decimal(10, 2) // Seconds - how long transition takes
   targetColor       Int[]    @map("target_color") // [R, G, B, W] array - empty array means brightness-only
   targetBrightness  Int?     @map("target_brightness") // 1-255, nullable for color-only
   startColor        Int[]    @default([]) @map("start_color") // Empty array = use current device state
@@ -251,13 +249,16 @@ model CueList {
   @@map("cue_lists")
 }
 
-// CueListCue model - Links cues to cue lists with ordering
+// CueListCue model - Links cues to cue lists with ordering and per-cue timing
 model CueListCue {
-  id        Int      @id @default(autoincrement())
-  cueListId Int      @map("cue_list_id")
-  cueId     Int      @map("cue_id")
-  order     Int      // Order within the list (0-based)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+  id              Int       @id @default(autoincrement())
+  cueListId       Int       @map("cue_list_id")
+  cueId           Int       @map("cue_id")
+  order           Int       // Order within the list (0-based)
+  fadeInSeconds   Decimal   @default(0) @map("fade_in_seconds") @db.Decimal(10, 2)
+  fadeOutSeconds  Decimal   @default(0) @map("fade_out_seconds") @db.Decimal(10, 2)
+  durationSeconds Decimal?  @map("duration_seconds") @db.Decimal(10, 2) // null = infinite
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp
 
   // Relations
   cueList CueList @relation(fields: [cueListId], references: [id], onDelete: Cascade)

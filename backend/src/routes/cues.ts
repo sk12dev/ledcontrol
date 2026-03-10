@@ -9,8 +9,6 @@ export const cuesRouter = Router();
 // Base object schema (plain z.object so we can .extend() - refined schemas have no .extend())
 const stepSchemaBase = z.object({
   order: z.number().int().min(0),
-  timeOffset: z.coerce.number().min(0),
-  transitionDuration: z.coerce.number().min(0),
   targetColor: z.array(z.number().int().min(0).max(255)).length(4).optional().nullable(),
   targetBrightness: z.number().int().min(1).max(255).optional().nullable(),
   startColor: z
@@ -253,8 +251,6 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
         cueSteps: {
           create: validatedData.steps.map((step) => ({
             order: step.order,
-            timeOffset: step.timeOffset,
-            transitionDuration: step.transitionDuration,
             targetColor: step.targetColor || [],
             targetBrightness: step.targetBrightness ?? null,
             startColor: step.startColor || [],
@@ -387,8 +383,6 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
       cueSteps?: {
         create: Array<{
           order: number;
-          timeOffset: number;
-          transitionDuration: number;
           targetColor: number[];
           targetBrightness: number | null;
           startColor: number[];
@@ -419,8 +413,6 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
       updateData.cueSteps = {
         create: validatedData.steps.map((step) => ({
           order: step.order,
-          timeOffset: step.timeOffset,
-          transitionDuration: step.transitionDuration,
           targetColor: step.targetColor || [],
           targetBrightness: step.targetBrightness ?? null,
           startColor: step.startColor || [],

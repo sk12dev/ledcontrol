@@ -550,8 +550,6 @@ export interface CueStep {
   id: number;
   cueId: number;
   order: number;
-  timeOffset: number;
-  transitionDuration: number;
   targetColor: [number, number, number, number] | null;
   targetBrightness: number | null;
   startColor: [number, number, number, number] | null;
@@ -595,8 +593,6 @@ export interface CreateCueRequest {
   userId?: number;
   steps: Array<{
     order: number;
-    timeOffset: number;
-    transitionDuration: number;
     targetColor?: [number, number, number, number] | null;
     targetBrightness?: number | null;
     startColor?: [number, number, number, number] | null;
@@ -623,8 +619,6 @@ export interface UpdateCueRequest {
   steps?: Array<{
     id?: number;
     order: number;
-    timeOffset: number;
-    transitionDuration: number;
     targetColor?: [number, number, number, number] | null;
     targetBrightness?: number | null;
     startColor?: [number, number, number, number] | null;
@@ -975,19 +969,30 @@ export const connectionApi = {
 };
 
 /**
- * Cue List Cue item
+ * Cue List Cue item (one cue in a list with optional timing)
  */
 export interface CueListCueItem {
   id: number;
   cueListId: number;
   cueId: number;
   order: number;
+  fadeInSeconds: number;
+  fadeOutSeconds: number;
+  durationSeconds: number | null;
   createdAt: string;
   cue: {
     id: number;
     name: string;
     description: string | null;
   };
+}
+
+/** Per-cue entry when creating/updating a cue list */
+export interface CueListEntry {
+  cueId: number;
+  fadeInSeconds?: number;
+  fadeOutSeconds?: number;
+  durationSeconds?: number | null;
 }
 
 /**
@@ -1017,9 +1022,12 @@ export interface CueList {
 export interface CreateCueListRequest {
   name: string;
   description?: string | null;
-  showId: number; // Required - cue list must belong to a show
+  showId: number;
   userId?: number;
+  /** Legacy: list of cue IDs (default timing). Use cues for per-cue timing. */
   cueIds?: number[];
+  /** Per-cue entries with optional fade in/out and duration (null = infinite). */
+  cues?: CueListEntry[];
 }
 
 /**
@@ -1028,9 +1036,10 @@ export interface CreateCueListRequest {
 export interface UpdateCueListRequest {
   name?: string;
   description?: string | null;
-  showId?: number; // Optional - allow changing show
+  showId?: number;
   userId?: number;
   cueIds?: number[];
+  cues?: CueListEntry[];
 }
 
 /**

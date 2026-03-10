@@ -216,6 +216,11 @@ export function CueLists({ showId, onEdit }: CueListsProps) {
                               <span className="text-xs text-gray-400">
                                 #{index + 1}
                               </span>
+                              {(cueItem.fadeInSeconds > 0 || cueItem.fadeOutSeconds > 0 || cueItem.durationSeconds != null) && (
+                                <span className="text-xs text-gray-500">
+                                  {[cueItem.fadeInSeconds > 0 && `in ${cueItem.fadeInSeconds}s`, cueItem.fadeOutSeconds > 0 && `out ${cueItem.fadeOutSeconds}s`, cueItem.durationSeconds != null ? `${cueItem.durationSeconds}s` : "∞"].filter(Boolean).join(" · ")}
+                                </span>
+                              )}
                               {isActive && (
                                 <span className="px-1.5 py-0.5 bg-green-500 text-white rounded text-xs font-medium">
                                   Active

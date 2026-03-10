@@ -6,21 +6,32 @@ import { cueExecutionService } from "../services/cueExecutionService.js";
 
 export const cueListsRouter = Router();
 
-// Validation schemas
+const cueListEntrySchema = z.object({
+  cueId: z.number().int().positive(),
+  fadeInSeconds: z.coerce.number().min(0).optional().default(0),
+  fadeOutSeconds: z.coerce.number().min(0).optional().default(0),
+  durationSeconds: z.coerce.number().min(0).nullable().optional(),
+});
+
+// Validation schemas: accept either cues (with timing) or cueIds (legacy, default timing)
 const createCueListSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional().nullable(),
-  showId: z.number().int().positive(), // Required - cue list must belong to a show
+  showId: z.number().int().positive(),
   userId: z.number().int().positive().optional(),
-  cueIds: z.array(z.number().int().positive()).optional().default([]),
+  cueIds: z.array(z.number().int().positive()).optional(),
+  cues: z.array(cueListEntrySchema).optional(),
+}).refine((data) => (data.cueIds?.length ?? 0) > 0 || (data.cues?.length ?? 0) > 0, {
+  message: "At least one cue (cueIds or cues) is required",
 });
 
 const updateCueListSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional().nullable(),
-  showId: z.number().int().positive().optional(), // Optional - allow changing show
+  showId: z.number().int().positive().optional(),
   userId: z.number().int().positive().optional(),
   cueIds: z.array(z.number().int().positive()).optional(),
+  cues: z.array(cueListEntrySchema).optional(),
 });
 
 // GET /api/cue-lists - List all cue lists
@@ -156,25 +167,24 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Show ID not found" });
     }
 
-    // Validate that all cue IDs exist and belong to the same show
-    if (validatedData.cueIds && validatedData.cueIds.length > 0) {
-      // Get unique cue IDs for validation (duplicates are allowed in the list)
-      const uniqueCueIds = [...new Set(validatedData.cueIds)];
-      const cues = await prisma.cue.findMany({
-        where: {
-          id: { in: uniqueCueIds },
-        },
-      });
+    const entries = validatedData.cues ?? (validatedData.cueIds ?? []).map((cueId) => ({
+      cueId,
+      fadeInSeconds: 0,
+      fadeOutSeconds: 0,
+      durationSeconds: null as number | null,
+    }));
 
+    const uniqueCueIds = [...new Set(entries.map((e) => e.cueId))];
+    if (uniqueCueIds.length > 0) {
+      const cues = await prisma.cue.findMany({
+        where: { id: { in: uniqueCueIds } },
+      });
       if (cues.length !== uniqueCueIds.length) {
         return res.status(400).json({ error: "One or more cue IDs not found" });
       }
-
-      // Validate that all cues belong to the same show as the cue list
       const cuesFromDifferentShow = cues.filter(
-        (cue: { showId: number }) => cue.showId !== validatedData.showId
+        (c: { showId: number }) => c.showId !== validatedData.showId
       );
-
       if (cuesFromDifferentShow.length > 0) {
         return res.status(400).json({
           error: `One or more cues belong to a different show. All cues must belong to show ${validatedData.showId}`,
@@ -182,7 +192,6 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
       }
     }
 
-    // Create cue list with cue assignments
     const cueList = await prisma.cueList.create({
       data: {
         name: validatedData.name,
@@ -191,9 +200,12 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
         userId: validatedData.userId,
         currentPosition: 0,
         cueListCues: {
-          create: validatedData.cueIds.map((cueId, index) => ({
-            cueId,
+          create: entries.map((e, index) => ({
+            cueId: e.cueId,
             order: index,
+            fadeInSeconds: e.fadeInSeconds ?? 0,
+            fadeOutSeconds: e.fadeOutSeconds ?? 0,
+            durationSeconds: e.durationSeconds ?? null,
           })),
         },
       },
@@ -267,43 +279,36 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
       }
     }
 
-    // If cueIds are being updated, validate and replace all cue assignments
-    if (validatedData.cueIds !== undefined) {
-      // Get unique cue IDs for validation (duplicates are allowed in the list)
-      const uniqueCueIds = [...new Set(validatedData.cueIds)];
-      const cues = await prisma.cue.findMany({
-        where: {
-          id: { in: uniqueCueIds },
-        },
-      });
+    const cuesUpdate = validatedData.cues ?? (validatedData.cueIds !== undefined
+      ? validatedData.cueIds.map((cueId) => ({ cueId, fadeInSeconds: 0, fadeOutSeconds: 0, durationSeconds: null as number | null }))
+      : undefined);
 
+    if (cuesUpdate !== undefined) {
+      const uniqueCueIds = [...new Set(cuesUpdate.map((e) => e.cueId))];
+      const cues = await prisma.cue.findMany({
+        where: { id: { in: uniqueCueIds } },
+      });
       if (cues.length !== uniqueCueIds.length) {
         return res.status(400).json({ error: "One or more cue IDs not found" });
       }
-
-      // Validate that all cues belong to the same show as the cue list
       const cuesFromDifferentShow = cues.filter(
-        (cue: { showId: number }) => cue.showId !== targetShowId
+        (c: { showId: number }) => c.showId !== targetShowId
       );
-
       if (cuesFromDifferentShow.length > 0) {
         return res.status(400).json({
           error: `One or more cues belong to a different show. All cues must belong to show ${targetShowId}`,
         });
       }
 
-      // Delete existing cue assignments
       await prisma.cueListCue.deleteMany({
         where: { cueListId: id },
       });
 
-      // Reset current position if it would be out of bounds (use full array length including duplicates)
       const newPosition =
-        existingCueList.currentPosition >= validatedData.cueIds.length
-          ? Math.max(0, validatedData.cueIds.length - 1)
+        existingCueList.currentPosition >= cuesUpdate.length
+          ? Math.max(0, cuesUpdate.length - 1)
           : existingCueList.currentPosition;
 
-      // Update cue list with new cue assignments (preserve duplicates)
       const updateData: {
         name?: string;
         description?: string | null;
@@ -311,14 +316,23 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
         userId?: number;
         currentPosition: number;
         cueListCues: {
-          create: Array<{ cueId: number; order: number }>;
+          create: Array<{
+            cueId: number;
+            order: number;
+            fadeInSeconds: number;
+            fadeOutSeconds: number;
+            durationSeconds: number | null;
+          }>;
         };
       } = {
         currentPosition: newPosition,
         cueListCues: {
-          create: validatedData.cueIds.map((cueId, index) => ({
-            cueId,
+          create: cuesUpdate.map((e, index) => ({
+            cueId: e.cueId,
             order: index,
+            fadeInSeconds: e.fadeInSeconds ?? 0,
+            fadeOutSeconds: e.fadeOutSeconds ?? 0,
+            durationSeconds: e.durationSeconds ?? null,
           })),
         },
       };
@@ -508,29 +522,19 @@ cueListsRouter.post(
       // Get the cue at the new position
       const currentCueListItem = updatedCueList.cueListCues[nextPosition];
 
-      // Execute the cue if it exists
       if (currentCueListItem) {
         try {
-          // Stop any currently executing cue
-          if (cueExecutionService.isExecuting()) {
-            cueExecutionService.stopExecution();
-          }
-
-          // Execute the new cue
+          cueExecutionService.prepareForNextCue();
+          const fadeIn = Number(currentCueListItem.fadeInSeconds ?? 0);
           cueExecutionService
-            .executeCue(currentCueListItem.cueId)
+            .executeCue(currentCueListItem.cueId, {
+              transitionDurationSeconds: fadeIn >= 0 ? fadeIn : undefined,
+            })
             .catch((error) => {
-              console.error(
-                `Error executing cue ${currentCueListItem.cueId}:`,
-                error
-              );
+              console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
             });
         } catch (error) {
-          console.error(
-            `Error executing cue ${currentCueListItem.cueId}:`,
-            error
-          );
-          // Continue even if execution fails
+          console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
         }
       }
 
@@ -604,29 +608,19 @@ cueListsRouter.post(
       // Get the cue at the new position
       const currentCueListItem = updatedCueList.cueListCues[prevPosition];
 
-      // Execute the cue if it exists
       if (currentCueListItem) {
         try {
-          // Stop any currently executing cue
-          if (cueExecutionService.isExecuting()) {
-            cueExecutionService.stopExecution();
-          }
-
-          // Execute the new cue
+          cueExecutionService.prepareForNextCue();
+          const fadeIn = Number(currentCueListItem.fadeInSeconds ?? 0);
           cueExecutionService
-            .executeCue(currentCueListItem.cueId)
+            .executeCue(currentCueListItem.cueId, {
+              transitionDurationSeconds: fadeIn >= 0 ? fadeIn : undefined,
+            })
             .catch((error) => {
-              console.error(
-                `Error executing cue ${currentCueListItem.cueId}:`,
-                error
-              );
+              console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
             });
         } catch (error) {
-          console.error(
-            `Error executing cue ${currentCueListItem.cueId}:`,
-            error
-          );
-          // Continue even if execution fails
+          console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
         }
       }
 
@@ -710,29 +704,19 @@ cueListsRouter.post("/:id/go-to", async (req: Request, res: Response) => {
     const currentCueListItem =
       updatedCueList.cueListCues[validatedData.position];
 
-    // Execute the cue if it exists
     if (currentCueListItem) {
       try {
-        // Stop any currently executing cue
-        if (cueExecutionService.isExecuting()) {
-          cueExecutionService.stopExecution();
-        }
-
-        // Execute the new cue
+        cueExecutionService.prepareForNextCue();
+        const fadeIn = Number(currentCueListItem.fadeInSeconds ?? 0);
         cueExecutionService
-          .executeCue(currentCueListItem.cueId)
+          .executeCue(currentCueListItem.cueId, {
+            transitionDurationSeconds: fadeIn >= 0 ? fadeIn : undefined,
+          })
           .catch((error) => {
-            console.error(
-              `Error executing cue ${currentCueListItem.cueId}:`,
-              error
-            );
+            console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
           });
       } catch (error) {
-        console.error(
-          `Error executing cue ${currentCueListItem.cueId}:`,
-          error
-        );
-        // Continue even if execution fails
+        console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
       }
     }
 
