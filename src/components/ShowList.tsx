@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Plus, Edit2, Trash2, FolderOpen, Zap, Network, Aperture } from "lucide-react";
+import { Plus, Edit2, Trash2, FolderOpen, Zap, Network, Aperture, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card";
 import {
@@ -168,6 +168,15 @@ export function ShowList() {
                 >
                   <Aperture className="w-4 h-4 mr-2" />
                   DMX Fixtures
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-zinc-400 hover:text-white"
+                  onClick={() => navigate("/busking")}
+                >
+                  <SlidersHorizontal className="w-4 h-4 mr-2" />
+                  Busking
                 </Button>
               </nav>
             </div>

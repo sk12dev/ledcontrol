@@ -1,7 +1,17 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { cueExecutionService } from "../services/cueExecutionService.js";
-import { applyPresetToDevices } from "../services/wledService.js";
+import {
+  applyPresetToDevices,
+  getDeviceState,
+  updateDeviceColorAndBrightness,
+  updateDeviceState,
+} from "../services/wledService.js";
+import {
+  buildFixtureChannelValues,
+  sendFixtureDmx,
+} from "../services/artnetService.js";
+import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 
 export const executionRouter = Router();
@@ -10,6 +20,22 @@ export const executionRouter = Router();
 const applyPresetSchema = z.object({
   presetId: z.number().int().positive(),
   deviceIds: z.array(z.number().int().positive()).min(1),
+});
+
+const colorArray = z.array(z.number().int().min(0).max(255)).length(4);
+
+const setFixtureSchema = z.object({
+  fixtureId: z.number().int().positive(),
+  color: colorArray.optional(),
+  brightness: z.number().int().min(1).max(255).optional(),
+  turnOff: z.boolean().optional(),
+});
+
+const setDeviceSchema = z.object({
+  deviceId: z.number().int().positive(),
+  color: colorArray.optional(),
+  brightness: z.number().int().min(1).max(255).optional(),
+  on: z.boolean().optional(),
 });
 
 // GET /api/execution/status - Get current execution status
@@ -54,6 +80,93 @@ executionRouter.post("/apply-preset", async (req: Request, res: Response) => {
     }
     console.error("Error applying preset:", error);
     res.status(500).json({ error: "Failed to apply preset" });
+  }
+});
+
+// POST /api/execution/set-fixture - Live busking: set one DMX fixture state
+executionRouter.post("/set-fixture", async (req: Request, res: Response) => {
+  try {
+    const validated = setFixtureSchema.parse(req.body);
+    const fixture = await prisma.dmxFixture.findUnique({
+      where: { id: validated.fixtureId },
+    });
+    if (!fixture) {
+      return res.status(404).json({ error: "Fixture not found" });
+    }
+    const purposes = (fixture.channelPurposes as string[]) ?? [];
+    const channelPurposes =
+      Array.isArray(purposes) && purposes.length === fixture.channelCount
+        ? purposes
+        : Array(fixture.channelCount).fill("dimmer");
+    const color = validated.color ?? [255, 255, 255, 0];
+    const brightness = validated.brightness ?? 255;
+    const turnOff = validated.turnOff ?? false;
+    const values = buildFixtureChannelValues(
+      channelPurposes,
+      color,
+      brightness,
+      turnOff
+    );
+    await sendFixtureDmx(validated.fixtureId, values);
+    res.json({ message: "Fixture updated" });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res
+        .status(400)
+        .json({ error: "Validation error", details: error.issues });
+    }
+    console.error("Error setting fixture:", error);
+    res.status(500).json({ error: "Failed to set fixture" });
+  }
+});
+
+// POST /api/execution/set-device - Live busking: set one WLED device state
+executionRouter.post("/set-device", async (req: Request, res: Response) => {
+  try {
+    const validated = setDeviceSchema.parse(req.body);
+    if (validated.on === false) {
+      await updateDeviceState(validated.deviceId, { on: false });
+      return res.json({ message: "Device turned off" });
+    }
+    let color: [number, number, number, number] = [255, 255, 255, 0];
+    if (validated.color && validated.color.length >= 4) {
+      color = [
+        validated.color[0],
+        validated.color[1],
+        validated.color[2],
+        validated.color[3] ?? 0,
+      ];
+    } else {
+      try {
+        const state = await getDeviceState(validated.deviceId);
+        if (
+          state.seg &&
+          state.seg.length > 0 &&
+          state.seg[0].col &&
+          state.seg[0].col[0]
+        ) {
+          color = state.seg[0].col[0];
+        }
+      } catch {
+        // keep default
+      }
+    }
+    const brightness = validated.brightness ?? 255;
+    await updateDeviceColorAndBrightness(
+      validated.deviceId,
+      color,
+      brightness,
+      0
+    );
+    res.json({ message: "Device updated" });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res
+        .status(400)
+        .json({ error: "Validation error", details: error.issues });
+    }
+    console.error("Error setting device:", error);
+    res.status(500).json({ error: "Failed to set device" });
   }
 });
 

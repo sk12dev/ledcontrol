@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, Settings, Zap, AlertTriangle, ArrowLeft, Edit2, Network, Aperture, ExternalLink } from "lucide-react";
+import { Plus, Settings, Zap, AlertTriangle, ArrowLeft, Edit2, Network, Aperture, ExternalLink, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import {
@@ -455,6 +455,15 @@ export default function App() {
                   onClick={() => showId && navigate(`/show/${showId}/cue-lists`)}
                 >
                   Cue Lists
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-zinc-400 hover:text-white"
+                  onClick={() => navigate("/busking")}
+                >
+                  <SlidersHorizontal className="w-4 h-4 mr-2" />
+                  Busking
                 </Button>
               </nav>
             </div>

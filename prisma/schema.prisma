@@ -25,6 +25,7 @@ model Device {
   presets      Preset[]
   userPrefs    UserPreference[]
   cueStepDevices CueStepDevice[]
+  buskingPatchEntries BuskingPatchEntry[]
 
   @@index([ipAddress])
   @@map("devices")
@@ -162,9 +163,27 @@ model DmxFixture {
   artNetNode       ArtNetNode         @relation(fields: [artNetNodeId], references: [id], onDelete: Cascade)
   cueStepFixtures  CueStepFixture[]
   groups           DmxFixtureGroup[]
+  buskingPatchEntries BuskingPatchEntry[]
 
   @@index([artNetNodeId])
   @@map("dmx_fixtures")
+}
+
+// Busking patch: maps fixture numbers (1, 2, 3...) to a Device or DmxFixture for command-line control
+model BuskingPatchEntry {
+  id             Int   @id @default(autoincrement())
+  fixtureNumber  Int   @unique @map("fixture_number")
+  deviceId       Int?  @map("device_id")
+  dmxFixtureId   Int?  @map("dmx_fixture_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations - exactly one must be set (enforced in application)
+  device     Device?     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  dmxFixture DmxFixture? @relation(fields: [dmxFixtureId], references: [id], onDelete: Cascade)
+
+  @@index([fixtureNumber])
+  @@map("busking_patch_entries")
 }
 
 // CueStepFixture model - Links cue steps to DMX fixtures

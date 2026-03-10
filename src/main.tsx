@@ -9,6 +9,7 @@ import DmxDevicesPage from './app/DmxDevicesPage.tsx'
 import KioskShowsPage from './app/kiosk/KioskShowsPage.tsx'
 import KioskCueListsPage from './app/kiosk/KioskCueListsPage.tsx'
 import KioskCueListPage from './app/kiosk/KioskCueListPage.tsx'
+import BuskingPage from './app/BuskingPage.tsx'
 import { ShowList } from './components/ShowList.tsx'
 import './styles/index.css'
 
@@ -22,6 +23,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/devices/wled" element={<WledDevicesPage />} />
         <Route path="/devices/artnet" element={<ArtNetNodesPage />} />
         <Route path="/devices/dmx" element={<DmxDevicesPage />} />
+        <Route path="/busking" element={<BuskingPage />} />
         <Route path="/show/:id/cue-lists" element={<CueListsPage />} />
         <Route path="/kiosk" element={<KioskShowsPage />} />
         <Route path="/kiosk/show/:id" element={<KioskCueListsPage />} />

@@ -11,6 +11,7 @@ import { executionRouter } from "./routes/execution.js";
 import { artnetNodesRouter } from "./routes/artnetNodes.js";
 import { dmxFixturesRouter } from "./routes/dmxFixtures.js";
 import { dmxFixtureGroupsRouter } from "./routes/dmxFixtureGroups.js";
+import { buskingPatchRouter } from "./routes/buskingPatch.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { connectionManager } from "./services/connectionManager.js";
 
@@ -58,6 +59,7 @@ app.use("/api/execution", executionRouter);
 app.use("/api/artnet-nodes", artnetNodesRouter);
 app.use("/api/dmx-fixtures", dmxFixturesRouter);
 app.use("/api/dmx-fixture-groups", dmxFixtureGroupsRouter);
+app.use("/api/busking-patch", buskingPatchRouter);
 
 // 404 handler
 app.use((req, res) => {

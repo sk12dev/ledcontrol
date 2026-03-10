@@ -765,6 +765,44 @@ export const dmxFixtureGroupsApi = {
 };
 
 /**
+ * Busking patch entry (fixture number -> device or DMX fixture)
+ */
+export interface BuskingPatchEntry {
+  id: number;
+  fixtureNumber: number;
+  deviceId: number | null;
+  dmxFixtureId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  device?: { id: number; name: string } | null;
+  dmxFixture?: { id: number; name: string } | null;
+}
+
+export interface BuskingPatchEntryInput {
+  fixtureNumber: number;
+  deviceId?: number;
+  dmxFixtureId?: number;
+}
+
+/**
+ * Busking Patch API
+ */
+export const buskingPatchApi = {
+  async getAll(): Promise<BuskingPatchEntry[]> {
+    const response = await fetch(`${API_BASE_URL}/busking-patch`);
+    return handleResponse<BuskingPatchEntry[]>(response);
+  },
+  async setPatch(entries: BuskingPatchEntryInput[]): Promise<BuskingPatchEntry[]> {
+    const response = await fetch(`${API_BASE_URL}/busking-patch`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries }),
+    });
+    return handleResponse<BuskingPatchEntry[]>(response);
+  },
+};
+
+/**
  * Execution status
  */
 export interface ExecutionStatus {
@@ -926,6 +964,44 @@ export const executionApi = {
       presetId: number;
       deviceIds: number[];
     }>(response);
+  },
+
+  /**
+   * Set single fixture state (live busking)
+   */
+  async setFixture(
+    fixtureId: number,
+    params: {
+      color?: [number, number, number, number];
+      brightness?: number;
+      turnOff?: boolean;
+    }
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/execution/set-fixture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fixtureId, ...params }),
+    });
+    await handleResponse<{ message: string }>(response);
+  },
+
+  /**
+   * Set single device state (live busking)
+   */
+  async setDevice(
+    deviceId: number,
+    params: {
+      color?: [number, number, number, number];
+      brightness?: number;
+      on?: boolean;
+    }
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/execution/set-device`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId, ...params }),
+    });
+    await handleResponse<{ message: string }>(response);
   },
 };
 
