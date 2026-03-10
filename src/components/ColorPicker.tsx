@@ -64,55 +64,42 @@ export function ColorPicker({ color, onColorChange, disabled = false }: ColorPic
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-4 bg-zinc-900 border border-zinc-800 rounded-lg">
-      <div className="mb-2">
-        <label htmlFor="color-picker" className="text-zinc-300 text-sm font-medium block cursor-pointer">
-          Color
-        </label>
-      </div>
-      <div className="flex items-center gap-4">
-        <div className="flex flex-1 items-center gap-3">
-          <input
-            id="color-picker"
-            type="color"
-            value={hexColor}
-            onChange={(e) => handleColorChange(e.target.value)}
-            disabled={disabled || isLoading}
-            className="w-16 h-16 rounded-md border-2 border-zinc-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 p-0"
-            style={{
-              WebkitAppearance: "none",
-              appearance: "none",
-            }}
-          />
-          <Input
-            type="text"
-            value={hexColor}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (/^#[0-9A-Fa-f]{0,6}$/.test(value)) {
-                setHexColor(value);
-                if (value.length === 7) {
-                  handleColorChange(value);
-                }
+    <div className="w-full p-2 bg-zinc-900 border border-zinc-800 rounded-lg">
+      <div className="flex items-center gap-2">
+        <input
+          id="color-picker"
+          type="color"
+          value={hexColor}
+          onChange={(e) => handleColorChange(e.target.value)}
+          disabled={disabled || isLoading}
+          className="w-8 h-8 rounded border border-zinc-600 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 p-0 flex-shrink-0"
+          style={{
+            WebkitAppearance: "none",
+            appearance: "none",
+          }}
+        />
+        <Input
+          type="text"
+          value={hexColor}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (/^#[0-9A-Fa-f]{0,6}$/.test(value)) {
+              setHexColor(value);
+              if (value.length === 7) {
+                handleColorChange(value);
               }
-            }}
-            disabled={disabled || isLoading}
-            placeholder="#FFA000"
-            className="flex-1 bg-zinc-800 border-zinc-700 text-white"
-          />
-        </div>
+            }
+          }}
+          disabled={disabled || isLoading}
+          placeholder="#FFA000"
+          className="flex-1 min-w-0 h-8 text-sm bg-zinc-800 border-zinc-700 text-white"
+        />
         {isLoading && (
-          <div className="flex items-center gap-2 text-zinc-400 text-sm">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Updating...</span>
-          </div>
+          <Loader2 className="w-4 h-4 animate-spin text-zinc-400 flex-shrink-0" />
         )}
       </div>
-      <div className="flex items-center gap-2 mt-3 text-sm text-zinc-400">
-        <span>RGB:</span>
-        <span className="font-mono">
-          ({color[0]}, {color[1]}, {color[2]})
-        </span>
+      <div className="text-xs text-zinc-500 mt-1.5 font-mono">
+        RGB: ({color[0]}, {color[1]}, {color[2]})
       </div>
     </div>
   );

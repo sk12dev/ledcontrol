@@ -11,6 +11,7 @@ import {
 } from "../api/backendClient";
 import { ColorPicker } from "./ColorPicker";
 import { ColorPresetSelector } from "./ColorPresetSelector";
+import { ScrollArea } from "@/app/components/ui/scroll-area";
 
 interface CueStep {
   id?: number;
@@ -665,20 +666,67 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                 )}
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-zinc-300">
-                      Target Color
-                    </label>
-                    {step.targetColor ? (
-                      <div className="space-y-2">
-                        <ColorPicker
-                          color={step.targetColor}
-                          onColorChange={async (color) =>
-                            updateStep(index, { targetColor: color })
+                  {/* Left column: Brightness then Color */}
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1 text-zinc-300">
+                        Target Brightness (1-255)
+                      </label>
+                      {step.targetBrightness !== null ? (
+                        <div className="space-y-2">
+                          <input
+                            type="range"
+                            min="1"
+                            max="255"
+                            value={step.targetBrightness}
+                            onChange={(e) =>
+                              updateStep(index, {
+                                targetBrightness: parseInt(e.target.value),
+                              })
+                            }
+                            disabled={step.turnOff}
+                            className="w-full disabled:opacity-50"
+                          />
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-zinc-400">
+                              {step.targetBrightness}
+                            </span>
+                            <button
+                              onClick={() =>
+                                updateStep(index, { targetBrightness: null })
+                              }
+                              disabled={step.turnOff}
+                              className="text-sm text-gray-400 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Clear (color only)
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() =>
+                            updateStep(index, { targetBrightness: 128 })
                           }
                           disabled={step.turnOff}
-                        />
-                        <div className="mt-2">
+                          className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Set Brightness
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1 text-zinc-300">
+                        Target Color
+                      </label>
+                      {step.targetColor ? (
+                        <div className="space-y-2">
+                          <ColorPicker
+                            color={step.targetColor}
+                            onColorChange={async (color) =>
+                              updateStep(index, { targetColor: color })
+                            }
+                            disabled={step.turnOff}
+                          />
                           <ColorPresetSelector
                             selectedColor={step.targetColor}
                             onColorSelect={(color) =>
@@ -686,29 +734,27 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                             }
                             disabled={step.turnOff}
                           />
+                          <button
+                            onClick={() => updateStep(index, { targetColor: null })}
+                            className="text-sm text-zinc-400 hover:text-zinc-300"
+                            disabled={step.turnOff}
+                          >
+                            Clear (brightness only)
+                          </button>
                         </div>
-                        <button
-                          onClick={() => updateStep(index, { targetColor: null })}
-                          className="text-sm text-zinc-400 hover:text-zinc-300"
-                          disabled={step.turnOff}
-                        >
-                          Clear (brightness only)
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <button
-                          onClick={() =>
-                            updateStep(index, {
-                              targetColor: [255, 255, 255, 0],
-                            })
-                          }
-                          disabled={step.turnOff}
-                          className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Set Color
-                        </button>
-                        <div className="mt-2">
+                      ) : (
+                        <div className="space-y-2">
+                          <button
+                            onClick={() =>
+                              updateStep(index, {
+                                targetColor: [255, 255, 255, 0],
+                              })
+                            }
+                            disabled={step.turnOff}
+                            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Set Color
+                          </button>
                           <ColorPresetSelector
                             selectedColor={null}
                             onColorSelect={(color) =>
@@ -717,162 +763,136 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                             disabled={step.turnOff}
                           />
                         </div>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-zinc-300">
-                      Target Brightness (1-255)
-                    </label>
-                    {step.targetBrightness !== null ? (
-                      <div className="space-y-2">
-                        <input
-                          type="range"
-                          min="1"
-                          max="255"
-                          value={step.targetBrightness}
-                          onChange={(e) =>
-                            updateStep(index, {
-                              targetBrightness: parseInt(e.target.value),
-                            })
-                          }
-                          disabled={step.turnOff}
-                          className="w-full disabled:opacity-50"
-                        />
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-zinc-400">
-                            {step.targetBrightness}
-                          </span>
-                          <button
-                            onClick={() =>
-                              updateStep(index, { targetBrightness: null })
-                            }
-                            disabled={step.turnOff}
-                            className="text-sm text-gray-400 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Clear (color only)
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() =>
-                          updateStep(index, { targetBrightness: 128 })
-                        }
-                        disabled={step.turnOff}
-                        className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Set Brightness
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-zinc-300">
-                    Target Devices (WLED)
-                  </label>
-                  {devices.length === 0 ? (
-                    <p className="text-zinc-400 text-sm">
-                      No WLED devices. Add devices or use fixtures below.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {devices.map((device) => {
-                        const isConnected = getDeviceConnectionStatus(device.id)?.isConnected ?? false;
-                        const devIds = step.deviceIds ?? [];
-                        return (
-                          <label
-                            key={device.id}
-                            className={`px-3 py-2 rounded cursor-pointer border ${
-                              devIds.includes(device.id)
-                                ? "bg-blue-600 border-blue-500 text-white"
-                                : "bg-zinc-800 border-zinc-700 text-zinc-300"
-                            } ${!isConnected ? "opacity-90" : ""}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={devIds.includes(device.id)}
-                              onChange={() => handleDeviceToggle(index, device.id)}
-                              className="sr-only"
-                            />
-                            {device.name}
-                            {!isConnected && (
-                              <span className="ml-1.5 text-xs opacity-80">(offline)</span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-zinc-300">
-                    Target Fixtures (DMX)
-                  </label>
-                  {groups.length > 0 && (
-                    <div className="mb-3">
-                      <span className="text-xs text-zinc-500 block mb-1.5">Groups</span>
-                      <div className="flex flex-wrap gap-2">
-                        {groups.map((group) => {
-                          const fids = step.fixtureIds ?? [];
-                          const groupFixtureIds = group.fixtures.map((f) => f.id);
-                          const allSelected = groupFixtureIds.length > 0 && groupFixtureIds.every((id) => fids.includes(id));
-                          const someSelected = groupFixtureIds.some((id) => fids.includes(id));
-                          const variant = allSelected
-                            ? "bg-emerald-600 border-emerald-500 text-white"
-                            : someSelected
-                              ? "bg-emerald-600/60 border-emerald-500/60 text-emerald-100"
-                              : "bg-zinc-800 border-zinc-700 text-zinc-300";
-                          return (
-                            <button
-                              key={group.id}
-                              type="button"
-                              onClick={() => handleGroupToggle(index, groupFixtureIds)}
-                              className={`px-3 py-2 rounded cursor-pointer border text-sm ${variant} hover:opacity-90 transition-opacity`}
-                              title={group.description || undefined}
-                            >
-                              {group.name} ({group.fixtures.length})
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {fixtures.length === 0 ? (
-                    <p className="text-zinc-400 text-sm">
-                      No DMX fixtures. Add fixtures in the left panel.
-                    </p>
-                  ) : (
-                    <>
-                      {groups.length > 0 && (
-                        <span className="text-xs text-zinc-500 block mb-1.5">Individual fixtures</span>
                       )}
-                      <div className="flex flex-wrap gap-2">
-                        {fixtures.map((fixture) => {
-                          const fids = step.fixtureIds ?? [];
-                          return (
-                            <label
-                              key={fixture.id}
-                              className={`px-3 py-2 rounded cursor-pointer border ${
-                                fids.includes(fixture.id)
-                                  ? "bg-emerald-600 border-emerald-500 text-white"
-                                  : "bg-zinc-800 border-zinc-700 text-zinc-300"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={fids.includes(fixture.id)}
-                                onChange={() => handleFixtureToggle(index, fixture.id)}
-                                className="sr-only"
-                              />
-                              {fixture.name} (Ch{fixture.startAddress})
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
+                    </div>
+                  </div>
+
+                  {/* Right column: Devices and Fixtures */}
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-zinc-300">
+                        Target Devices (WLED)
+                      </label>
+                      {devices.length === 0 ? (
+                        <p className="text-zinc-400 text-sm">
+                          No WLED devices. Add devices or use fixtures below.
+                        </p>
+                      ) : (
+                        <ScrollArea className="h-32 w-full rounded-md border border-zinc-700 bg-zinc-800/50">
+                          <div className="flex flex-col gap-0.5 p-1.5">
+                            {devices.map((device) => {
+                              const isConnected = getDeviceConnectionStatus(device.id)?.isConnected ?? false;
+                              const devIds = step.deviceIds ?? [];
+                              const checked = devIds.includes(device.id);
+                              return (
+                                <label
+                                  key={device.id}
+                                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer border ${
+                                    checked
+                                      ? "bg-blue-600 border-blue-500 text-white"
+                                      : "bg-transparent border-transparent text-zinc-300 hover:bg-zinc-700/50"
+                                  } ${!isConnected ? "opacity-90" : ""}`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => handleDeviceToggle(index, device.id)}
+                                    className="h-4 w-4 rounded border-zinc-600"
+                                  />
+                                  <span className="truncate text-sm">
+                                    {device.name}
+                                    {!isConnected && (
+                                      <span className="ml-1 text-xs opacity-80">(offline)</span>
+                                    )}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </ScrollArea>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-zinc-300">
+                        Target Fixtures (DMX)
+                      </label>
+                      {groups.length > 0 && (
+                        <div className="mb-2">
+                          <span className="text-xs text-zinc-500 block mb-1">Groups</span>
+                          <ScrollArea className="h-24 w-full rounded-md border border-zinc-700 bg-zinc-800/50">
+                            <div className="flex flex-col gap-0.5 p-1.5">
+                              {groups.map((group) => {
+                                const fids = step.fixtureIds ?? [];
+                                const groupFixtureIds = group.fixtures.map((f) => f.id);
+                                const allSelected = groupFixtureIds.length > 0 && groupFixtureIds.every((id) => fids.includes(id));
+                                const someSelected = groupFixtureIds.some((id) => fids.includes(id));
+                                return (
+                                  <label
+                                    key={group.id}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer border text-sm ${
+                                      allSelected
+                                        ? "bg-emerald-600 border-emerald-500 text-white"
+                                        : someSelected
+                                          ? "bg-emerald-600/60 border-emerald-500/60 text-emerald-100"
+                                          : "bg-transparent border-transparent text-zinc-300 hover:bg-zinc-700/50"
+                                    }`}
+                                    title={group.description || undefined}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={allSelected}
+                                      onChange={() => handleGroupToggle(index, groupFixtureIds)}
+                                      className="h-4 w-4 rounded border-zinc-600"
+                                    />
+                                    <span className="truncate">{group.name} ({group.fixtures.length})</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      )}
+                      {fixtures.length === 0 ? (
+                        <p className="text-zinc-400 text-sm">
+                          No DMX fixtures. Add fixtures in the left panel.
+                        </p>
+                      ) : (
+                        <>
+                          {groups.length > 0 && (
+                            <span className="text-xs text-zinc-500 block mb-1">Individual fixtures</span>
+                          )}
+                          <ScrollArea className="h-40 w-full rounded-md border border-zinc-700 bg-zinc-800/50">
+                            <div className="flex flex-col gap-0.5 p-1.5">
+                              {fixtures.map((fixture) => {
+                                const fids = step.fixtureIds ?? [];
+                                const checked = fids.includes(fixture.id);
+                                return (
+                                  <label
+                                    key={fixture.id}
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer border ${
+                                      checked
+                                        ? "bg-emerald-600 border-emerald-500 text-white"
+                                        : "bg-transparent border-transparent text-zinc-300 hover:bg-zinc-700/50"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => handleFixtureToggle(index, fixture.id)}
+                                      className="h-4 w-4 rounded border-zinc-600"
+                                    />
+                                    <span className="truncate text-sm">
+                                      {fixture.name} (Ch{fixture.startAddress})
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </ScrollArea>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
