@@ -45,8 +45,8 @@ interface UnitState {
 
 const DEFAULT_STATE: UnitState = {
   color: [255, 255, 255, 0],
-  brightness: 255,
-  on: true,
+  brightness: 0,
+  on: false,
 };
 
 function unitKey(unit: Unit): string {
@@ -127,6 +127,29 @@ export default function BuskingPage() {
     },
     [units]
   );
+
+  const patchNumbersByUnitKey = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    for (const entry of patchEntries) {
+      const unit = getUnitByPatchEntry(entry);
+      if (!unit) continue;
+      const key = unitKey(unit);
+      if (!map[key]) map[key] = [];
+      map[key].push(entry.fixtureNumber);
+    }
+    Object.keys(map).forEach((k) => map[k].sort((a, b) => a - b));
+    return map;
+  }, [patchEntries, getUnitByPatchEntry]);
+
+  const patchedUnitsOrdered = useMemo(() => {
+    const keyToUnit = new Map<string, Unit>();
+    for (const u of units) keyToUnit.set(unitKey(u), u);
+    const withMinPatch = Object.entries(patchNumbersByUnitKey)
+      .map(([key, nums]) => ({ unit: keyToUnit.get(key), minPatch: nums[0] }))
+      .filter((x): x is { unit: Unit; minPatch: number } => x.unit != null);
+    withMinPatch.sort((a, b) => a.minPatch - b.minPatch);
+    return withMinPatch.map((x) => x.unit);
+  }, [units, patchNumbersByUnitKey]);
 
   const fetchPatch = useCallback(async () => {
     setPatchLoading(true);
@@ -269,7 +292,7 @@ export default function BuskingPage() {
     try {
       const steps: CreateCueRequest["steps"] = [];
       let order = 0;
-      for (const unit of units) {
+      for (const unit of patchedUnitsOrdered) {
         const state = getState(unit);
         if (unit.type === "device") {
           steps.push({
@@ -290,7 +313,7 @@ export default function BuskingPage() {
         }
       }
       if (steps.length === 0) {
-        setSaveError("No devices or fixtures to save");
+        setSaveError("Patch at least one fixture to save as cue");
         setSaving(false);
         return;
       }
@@ -307,14 +330,14 @@ export default function BuskingPage() {
     } finally {
       setSaving(false);
     }
-  }, [units, getState, cueName, selectedShowId]);
+  }, [patchedUnitsOrdered, getState, cueName, selectedShowId]);
 
   const handleCommandSubmit = useCallback(() => {
     const line = commandLine.trim();
     if (!line) return;
     const parsed = parseBuskingCommand(line);
     if (!parsed) {
-      setCommandMessage("Unknown command. Try: Fixture 1 at 50, Fixture 1 Thru 5 Full, Fixture 1 Off");
+      setCommandMessage("Unknown command. Try: 1 @ 50, 1 Thru 5 Full, 1 Off");
       return;
     }
     if (parsed.error) {
@@ -339,7 +362,7 @@ export default function BuskingPage() {
       setCommandMessage(`Fixture(s) ${missing.join(", ")} not patched or not found`);
       return;
     }
-    const bri = on ? Math.max(1, brightness) : 1;
+    const bri = on ? Math.max(1, brightness) : 0;
     for (const unit of targets) {
       updateUnitState(unit, { brightness: bri, on });
     }
@@ -536,17 +559,17 @@ export default function BuskingPage() {
                         <SelectTrigger className="w-[220px] bg-zinc-800 border-zinc-700 text-white text-sm">
                           <SelectValue placeholder="Select device or fixture" />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none" className="text-zinc-400">
+                        <SelectContent className="bg-zinc-800 border-zinc-700 text-white">
+                          <SelectItem value="none" className="text-zinc-400 focus:bg-zinc-700 focus:text-white">
                             —
                           </SelectItem>
                           {devices.map((d) => (
-                            <SelectItem key={`d-${d.id}`} value={`d-${d.id}`} className="text-white focus:bg-zinc-700">
+                            <SelectItem key={`d-${d.id}`} value={`d-${d.id}`} className="text-white focus:bg-zinc-700 focus:text-white">
                               [WLED] {d.name}
                             </SelectItem>
                           ))}
                           {fixtures.map((f) => (
-                            <SelectItem key={`f-${f.id}`} value={`f-${f.id}`} className="text-white focus:bg-zinc-700">
+                            <SelectItem key={`f-${f.id}`} value={`f-${f.id}`} className="text-white focus:bg-zinc-700 focus:text-white">
                               [DMX] {f.name}
                             </SelectItem>
                           ))}
@@ -572,10 +595,11 @@ export default function BuskingPage() {
 
       <div className="container mx-auto px-6 py-6 overflow-x-auto">
         <div className="flex gap-4 pb-4 min-w-max">
-          {units.map((unit) => (
+          {patchedUnitsOrdered.map((unit) => (
             <BuskingTile
               key={unitKey(unit)}
               unit={unit}
+              patchNumbers={patchNumbersByUnitKey[unitKey(unit)] ?? []}
               state={getState(unit)}
               onUpdate={(patch) => updateUnitState(unit, patch)}
             />
@@ -662,7 +686,7 @@ export default function BuskingPage() {
           <SheetHeader className="border-b border-zinc-800 px-4 py-3 shrink-0">
             <SheetTitle className="text-white text-base">Command line</SheetTitle>
             <p className="text-xs text-zinc-500 mt-1">
-              Fixture n at 50 | Fixture 1 Thru 5 Full | Fixture 1 Off
+              1 @ 50 | 1 Thru 5 Full | 1 Off
             </p>
           </SheetHeader>
           <div className="p-4 flex flex-col gap-2">
@@ -677,7 +701,7 @@ export default function BuskingPage() {
                     handleCommandSubmit();
                   }
                 }}
-                placeholder="Fixture 1 at Full"
+                placeholder="1 @ 50"
                 className="bg-zinc-800 border-zinc-700 text-white font-mono flex-1"
                 autoFocus
               />
@@ -701,10 +725,12 @@ export default function BuskingPage() {
 
 function BuskingTile({
   unit,
+  patchNumbers,
   state,
   onUpdate,
 }: {
   unit: Unit;
+  patchNumbers: number[];
   state: UnitState;
   onUpdate: (patch: Partial<UnitState>) => void;
 }) {
@@ -713,13 +739,20 @@ function BuskingTile({
 
   return (
     <div className="flex-shrink-0 w-[200px] bg-zinc-900/80 border border-zinc-800 rounded-lg p-4 flex flex-col gap-3 hover:border-zinc-700 transition-colors">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-zinc-500 uppercase">
-          {unit.type === "device" ? "WLED" : "DMX"}
-        </span>
-        <span className="font-medium text-white truncate" title={unit.name}>
-          {unit.name}
-        </span>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-zinc-500 uppercase">
+            {unit.type === "device" ? "WLED" : "DMX"}
+          </span>
+          <span className="font-medium text-white truncate" title={unit.name}>
+            {unit.name}
+          </span>
+        </div>
+        {patchNumbers.length > 0 && (
+          <span className="text-xs text-violet-400 font-mono" title="Use in command line">
+            Fixture #{patchNumbers.join(", #")}
+          </span>
+        )}
       </div>
       <div
         className="h-12 rounded-md border border-zinc-700 transition-colors"
@@ -736,8 +769,8 @@ function BuskingTile({
           <Label className="text-xs text-zinc-500">Brightness</Label>
           <Slider
             value={[state.brightness]}
-            onValueChange={([v]) => onUpdate({ brightness: v ?? 255 })}
-            min={1}
+            onValueChange={([v]) => onUpdate({ brightness: v ?? 0 })}
+            min={0}
             max={255}
             step={1}
             className="mt-1"

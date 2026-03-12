@@ -1,7 +1,8 @@
 /**
  * ETC EOS-style command parser for busking.
- * Parses: Fixture n [Thru m] at <level> | Full | Off
- * Case-insensitive. Also accepts "Chan" as alias for "Fixture".
+ * Parses: [Fixture ]n [Thru m] at|@ <level> | Full | Off
+ * Case-insensitive. "Fixture " is optional if line starts with a number.
+ * Also accepts "Chan" as alias for "Fixture". "@" is shorthand for "at".
  */
 
 export interface ParsedCommand {
@@ -12,12 +13,17 @@ export interface ParsedCommand {
 }
 
 /**
- * Parse a single line into fixture numbers and action (at level / Full / Off).
+ * Parse a single line into fixture numbers and action (at/@ level / Full / Off).
  * Returns null if the line doesn't match the expected format.
  */
 export function parseBuskingCommand(line: string): ParsedCommand | null {
-  const trimmed = line.trim();
+  let trimmed = line.trim();
   if (!trimmed) return null;
+
+  // If line starts with a digit, treat as "Fixture <rest>"
+  if (/^\d/.test(trimmed)) {
+    trimmed = "Fixture " + trimmed;
+  }
 
   const lower = trimmed.toLowerCase();
 
@@ -43,8 +49,8 @@ export function parseBuskingCommand(line: string): ParsedCommand | null {
     rest = rest.slice(thruMatch[0].length).trim();
   }
 
-  // "at <number>", "full", or "off"
-  const atMatch = rest.match(/^\s*at\s+(\d+)\s*$/i);
+  // "at <number>", "@ <number>", "full", or "off"
+  const atMatch = rest.match(/^\s*(?:at|@)\s*(\d+)\s*$/i);
   const fullMatch = /^\s*full\s*$/i.test(rest);
   const offMatch = /^\s*off\s*$/i.test(rest);
 
