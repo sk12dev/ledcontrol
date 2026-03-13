@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, SlidersHorizontal, Save, Zap, Aperture, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, SlidersHorizontal, Save, Zap, Aperture, ChevronDown, ChevronRight, Plus, Trash2, Sliders } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Slider } from "@/app/components/ui/slider";
 import { Switch } from "@/app/components/ui/switch";
@@ -34,6 +34,11 @@ import {
   type BuskingPatchEntryInput,
 } from "@/api/backendClient";
 import { parseBuskingCommand } from "@/app/busking/commandParser";
+import {
+  DmxChannelsModal,
+  buildFixtureChannelValuesFromState,
+} from "@/app/components/DmxChannelsModal";
+import type { DmxFixture } from "@/api/backendClient";
 
 type Unit = { type: "device"; id: number; name: string } | { type: "fixture"; id: number; name: string };
 
@@ -593,15 +598,17 @@ export default function BuskingPage() {
         )}
       </div>
 
-      <div className="container mx-auto px-6 py-6 overflow-x-auto">
-        <div className="flex gap-4 pb-4 min-w-max">
+      <div className="container mx-auto px-6 py-6">
+        <div className="flex flex-wrap gap-4 pb-4">
           {patchedUnitsOrdered.map((unit) => (
             <BuskingTile
               key={unitKey(unit)}
               unit={unit}
+              fixture={unit.type === "fixture" ? fixtures.find((f) => f.id === unit.id) ?? null : null}
               patchNumbers={patchNumbersByUnitKey[unitKey(unit)] ?? []}
               state={getState(unit)}
               onUpdate={(patch) => updateUnitState(unit, patch)}
+              liveMode={liveMode}
             />
           ))}
         </div>
@@ -725,17 +732,38 @@ export default function BuskingPage() {
 
 function BuskingTile({
   unit,
+  fixture,
   patchNumbers,
   state,
   onUpdate,
+  liveMode,
 }: {
   unit: Unit;
+  fixture: DmxFixture | null;
   patchNumbers: number[];
   state: UnitState;
   onUpdate: (patch: Partial<UnitState>) => void;
+  liveMode: boolean;
 }) {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [r, g, b] = state.color;
   const hex = rgbToHex(r, g, b);
+
+  const getInitialChannels = useCallback(() => {
+    if (!fixture) return [];
+    const purposes =
+      Array.isArray(fixture.channelPurposes) && fixture.channelPurposes.length === fixture.channelCount
+        ? (fixture.channelPurposes as string[])
+        : Array(fixture.channelCount).fill("dimmer");
+    return buildFixtureChannelValuesFromState(
+      purposes,
+      state.color,
+      state.brightness,
+      state.on
+    );
+  }, [fixture, state.color, state.brightness, state.on]);
+
+  const initialChannels = fixture && advancedOpen ? getInitialChannels() : [];
 
   return (
     <div className="flex-shrink-0 w-[200px] bg-zinc-900/80 border border-zinc-800 rounded-lg p-4 flex flex-col gap-3 hover:border-zinc-700 transition-colors">
@@ -773,10 +801,22 @@ function BuskingTile({
             min={0}
             max={255}
             step={1}
-            className="mt-1"
+            className="mt-1 [&_[data-slot=slider-track]]:bg-gradient-to-r [&_[data-slot=slider-track]]:from-black [&_[data-slot=slider-track]]:to-white [&_[data-slot=slider-range]]:bg-transparent"
           />
         </div>
       </div>
+      {unit.type === "fixture" && fixture && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full border-0 bg-violet-600 text-white hover:bg-white hover:text-violet-600"
+          onClick={() => setAdvancedOpen(true)}
+        >
+          <Sliders className="w-3.5 h-3.5 mr-1.5" />
+          Channels
+        </Button>
+      )}
       <div className="flex items-center justify-between">
         <Label className="text-xs text-zinc-500">On</Label>
         <Switch
@@ -784,6 +824,15 @@ function BuskingTile({
           onCheckedChange={(on) => onUpdate({ on })}
         />
       </div>
+      {fixture && (
+        <DmxChannelsModal
+          fixture={fixture}
+          initialChannels={initialChannels}
+          isOpen={advancedOpen}
+          onClose={() => setAdvancedOpen(false)}
+          liveMode={liveMode}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, Settings, Zap, AlertTriangle, ArrowLeft, Edit2, Network, Aperture, ExternalLink, SlidersHorizontal } from "lucide-react";
+import { Plus, Settings, Zap, AlertTriangle, ArrowLeft, Edit2, Network, Aperture, ExternalLink, SlidersHorizontal, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import {
@@ -31,6 +31,7 @@ import {
   SheetContent,
 } from "@/app/components/ui/sheet";
 import { ScrollArea } from "@/app/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/app/components/ui/collapsible";
 import { CueBuilder } from "@/components/CueBuilder";
 
 export default function App() {
@@ -49,6 +50,11 @@ export default function App() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [lastExecutedCueId, setLastExecutedCueId] = useState<number | null>(null);
   
+  // Left panel collapsible sections
+  const [wledOpen, setWledOpen] = useState(true);
+  const [artnetOpen, setArtnetOpen] = useState(true);
+  const [dmxOpen, setDmxOpen] = useState(true);
+
   // Cue drawer state
   const [isCueDrawerOpen, setIsCueDrawerOpen] = useState(false);
   const [editingCue, setEditingCue] = useState<Cue | null>(null);
@@ -510,10 +516,17 @@ export default function App() {
           <div className="col-span-3 space-y-6">
             <ScrollArea className="h-[calc(100vh-12rem)]">
               <div className="space-y-6 pr-4">
-                <div>
+                <Collapsible open={wledOpen} onOpenChange={setWledOpen}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold">WLED Devices</h2>
-                    <div className="flex items-center gap-1">
+                    <CollapsibleTrigger className="flex items-center gap-2 text-left hover:text-white group cursor-pointer bg-transparent border-none p-0">
+                      {wledOpen ? (
+                        <ChevronDown className="w-4 h-4 text-zinc-500 group-hover:text-white shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white shrink-0" />
+                      )}
+                      <h2 className="text-lg font-semibold">WLED Devices</h2>
+                    </CollapsibleTrigger>
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -533,6 +546,7 @@ export default function App() {
                       </Button>
                     </div>
                   </div>
+                  <CollapsibleContent>
                   <div className="space-y-3">
                     {isLoading ? (
                       <div className="text-center py-8 text-zinc-500 text-sm">Loading devices...</div>
@@ -554,12 +568,20 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
-                <div className="pt-6">
+                <Collapsible open={artnetOpen} onOpenChange={setArtnetOpen} className="pt-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold">Art-Net Nodes</h2>
-                    <div className="flex items-center gap-1">
+                    <CollapsibleTrigger className="flex items-center gap-2 text-left hover:text-white group cursor-pointer bg-transparent border-none p-0">
+                      {artnetOpen ? (
+                        <ChevronDown className="w-4 h-4 text-zinc-500 group-hover:text-white shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white shrink-0" />
+                      )}
+                      <h2 className="text-lg font-semibold">Art-Net Nodes</h2>
+                    </CollapsibleTrigger>
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -579,6 +601,7 @@ export default function App() {
                       </Button>
                     </div>
                   </div>
+                  <CollapsibleContent>
                   <div className="space-y-2">
                     {nodes.length === 0 ? (
                       <div className="text-center py-6 text-zinc-500 text-sm">
@@ -606,12 +629,20 @@ export default function App() {
                       ))
                     )}
                   </div>
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
 
-                <div>
+                <Collapsible open={dmxOpen} onOpenChange={setDmxOpen} className="pt-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold">DMX Fixtures</h2>
-                    <div className="flex items-center gap-1">
+                    <CollapsibleTrigger className="flex items-center gap-2 text-left hover:text-white group cursor-pointer bg-transparent border-none p-0">
+                      {dmxOpen ? (
+                        <ChevronDown className="w-4 h-4 text-zinc-500 group-hover:text-white shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white shrink-0" />
+                      )}
+                      <h2 className="text-lg font-semibold">DMX Fixtures</h2>
+                    </CollapsibleTrigger>
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -632,6 +663,7 @@ export default function App() {
                       </Button>
                     </div>
                   </div>
+                  <CollapsibleContent>
                   <div className="space-y-2">
                     {fixtures.length === 0 ? (
                       <div className="text-center py-6 text-zinc-500 text-sm">
@@ -659,7 +691,8 @@ export default function App() {
                       ))
                     )}
                   </div>
-                </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </div>
             </ScrollArea>
           </div>

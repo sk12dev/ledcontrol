@@ -38,6 +38,11 @@ const setDeviceSchema = z.object({
   on: z.boolean().optional(),
 });
 
+const setFixtureChannelsSchema = z.object({
+  fixtureId: z.number().int().positive(),
+  channels: z.array(z.number().int().min(0).max(255)),
+});
+
 // GET /api/execution/status - Get current execution status
 executionRouter.get("/status", async (req: Request, res: Response) => {
   try {
@@ -117,6 +122,34 @@ executionRouter.post("/set-fixture", async (req: Request, res: Response) => {
     }
     console.error("Error setting fixture:", error);
     res.status(500).json({ error: "Failed to set fixture" });
+  }
+});
+
+// POST /api/execution/set-fixture-channels - Live busking: set raw DMX channel values
+executionRouter.post("/set-fixture-channels", async (req: Request, res: Response) => {
+  try {
+    const validated = setFixtureChannelsSchema.parse(req.body);
+    const fixture = await prisma.dmxFixture.findUnique({
+      where: { id: validated.fixtureId },
+    });
+    if (!fixture) {
+      return res.status(404).json({ error: "Fixture not found" });
+    }
+    if (validated.channels.length !== fixture.channelCount) {
+      return res.status(400).json({
+        error: `Channel count must be ${fixture.channelCount}`,
+      });
+    }
+    await sendFixtureDmx(validated.fixtureId, validated.channels);
+    res.json({ message: "Fixture channels updated" });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res
+        .status(400)
+        .json({ error: "Validation error", details: error.issues });
+    }
+    console.error("Error setting fixture channels:", error);
+    res.status(500).json({ error: "Failed to set fixture channels" });
   }
 });
 

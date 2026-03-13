@@ -986,6 +986,18 @@ export const executionApi = {
   },
 
   /**
+   * Set raw DMX channel values for a fixture (live busking, advanced)
+   */
+  async setFixtureChannels(fixtureId: number, channels: number[]): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/execution/set-fixture-channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fixtureId, channels }),
+    });
+    await handleResponse<{ message: string }>(response);
+  },
+
+  /**
    * Set single device state (live busking)
    */
   async setDevice(
