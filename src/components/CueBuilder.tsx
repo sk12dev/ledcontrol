@@ -218,7 +218,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     
     setSteps(updatedSteps);
     setExpandedIndices((prev) =>
-      new Set([...prev].map((i) => (i > index ? i + 1 : i)).add(index + 1))
+      new Set([...[...prev].map((i) => (i > index ? i + 1 : i)), index + 1])
     );
   };
 
