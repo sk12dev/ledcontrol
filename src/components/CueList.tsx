@@ -61,15 +61,27 @@ export function CueList({ onEdit, onExecute }: CueListProps) {
         showId: cueToDuplicate.showId,
         steps: cueToDuplicate.cueSteps
           .sort((a, b) => a.order - b.order)
-          .map((step) => ({
-            order: step.order,
-            targetColor: step.targetColor,
-            targetBrightness: step.targetBrightness ?? undefined,
-            startColor: step.startColor ?? undefined,
-            startBrightness: step.startBrightness ?? undefined,
-            deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
-            fixtureIds: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
-          })),
+          .map((step) => {
+            const deviceIds: number[] = [];
+            const segmentTargets: number[] = [];
+            for (const csd of step.cueStepDevices) {
+              if (csd.wledSegmentId == null) {
+                deviceIds.push(csd.deviceId);
+              } else {
+                segmentTargets.push(csd.wledSegmentId);
+              }
+            }
+            return {
+              order: step.order,
+              targetColor: step.targetColor,
+              targetBrightness: step.targetBrightness ?? undefined,
+              startColor: step.startColor ?? undefined,
+              startBrightness: step.startBrightness ?? undefined,
+              deviceIds,
+              segmentTargets,
+              fixtureIds: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
+            };
+          }),
       });
     } catch (error) {
       console.error("Failed to duplicate cue:", error);
@@ -137,7 +149,7 @@ export function CueList({ onEdit, onExecute }: CueListProps) {
                       <p className="text-sm text-gray-400 mb-2">{cue.description}</p>
                     )}
                     <div className="flex gap-4 text-sm text-gray-400">
-                      <span>{stepCount} step{stepCount !== 1 ? "s" : ""}</span>
+                      <span>{stepCount} target{stepCount !== 1 ? "s" : ""}</span>
                       <span>{deviceCount} device{deviceCount !== 1 ? "s" : ""}</span>
                     </div>
                   </div>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useMultiDevice } from "../hooks/useMultiDevice";
 import { useDmxFixtures } from "../hooks/useDmxFixtures";
 import { useFixtureGroups } from "../hooks/useFixtureGroups";
@@ -8,10 +8,18 @@ import {
   type CreateCueRequest,
   type UpdateCueRequest,
   devicesApi,
+  wledSegmentsApi,
+  type WledSegment,
 } from "../api/backendClient";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { ColorPicker } from "./ColorPicker";
 import { ColorPresetSelector } from "./ColorPresetSelector";
 import { ScrollArea } from "@/app/components/ui/scroll-area";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/app/components/ui/collapsible";
 
 interface CueStep {
   id?: number;
@@ -27,6 +35,7 @@ interface CueStep {
   wledEffectIntensity: number | null;
   wledPaletteId: number | null;
   deviceIds: number[];
+  segmentTargets: number[];
   fixtureIds: number[];
 }
 
@@ -50,22 +59,34 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   );
   const [steps, setSteps] = useState<CueStep[]>(() => {
     if (cue?.cueSteps) {
-      return cue.cueSteps.map((step) => ({
-        id: step.id,
-        order: step.order,
-        targetColor: step.targetColor,
-        targetBrightness: step.targetBrightness,
-        startColor: step.startColor || null,
-        startBrightness: step.startBrightness,
-        turnOff: step.turnOff ?? false,
-        useWledEffect: step.useWledEffect ?? false,
-        wledEffectId: step.wledEffectId ?? null,
-        wledEffectSpeed: step.wledEffectSpeed ?? 128,
-        wledEffectIntensity: step.wledEffectIntensity ?? 128,
-        wledPaletteId: step.wledPaletteId ?? 0,
-        deviceIds: step.cueStepDevices.map((csd) => csd.deviceId),
-        fixtureIds: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
-      }));
+      return cue.cueSteps.map((step) => {
+        const deviceIds: number[] = [];
+        const segmentTargets: number[] = [];
+        for (const csd of step.cueStepDevices) {
+          if (csd.wledSegmentId == null) {
+            deviceIds.push(csd.deviceId);
+          } else {
+            segmentTargets.push(csd.wledSegmentId);
+          }
+        }
+        return {
+          id: step.id,
+          order: step.order,
+          targetColor: step.targetColor,
+          targetBrightness: step.targetBrightness,
+          startColor: step.startColor || null,
+          startBrightness: step.startBrightness,
+          turnOff: step.turnOff ?? false,
+          useWledEffect: step.useWledEffect ?? false,
+          wledEffectId: step.wledEffectId ?? null,
+          wledEffectSpeed: step.wledEffectSpeed ?? 128,
+          wledEffectIntensity: step.wledEffectIntensity ?? 128,
+          wledPaletteId: step.wledPaletteId ?? 0,
+          deviceIds,
+          segmentTargets,
+          fixtureIds: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
+        };
+      });
     }
     return [];
   });
@@ -77,6 +98,27 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   >(new Map());
   const [wledLoading, setWledLoading] = useState(false);
   const wledLoadingRef = useRef<Set<number>>(new Set());
+  const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
+  const [segmentsByDevice, setSegmentsByDevice] = useState<Record<number, WledSegment[]>>({});
+
+  useEffect(() => {
+    if (devices.length === 0) return;
+    const load = async () => {
+      const next: Record<number, WledSegment[]> = {};
+      await Promise.all(
+        devices.map(async (d) => {
+          try {
+            const list = await wledSegmentsApi.list(d.id);
+            next[d.id] = list;
+          } catch {
+            next[d.id] = [];
+          }
+        })
+      );
+      setSegmentsByDevice((prev) => ({ ...prev, ...next }));
+    };
+    load();
+  }, [devices]);
 
   const loadWledData = useCallback(async (deviceId: number) => {
     if (wledLoadingRef.current.has(deviceId)) return;
@@ -116,9 +158,12 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       wledEffectIntensity: 128,
       wledPaletteId: 0,
       deviceIds: [],
+      segmentTargets: [],
       fixtureIds: [],
     };
+    const newIndex = steps.length;
     setSteps([...steps, newStep]);
+    setExpandedIndices((prev) => new Set(prev).add(newIndex));
   };
 
   const removeStep = (index: number) => {
@@ -127,6 +172,13 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       order: i,
     }));
     setSteps(newSteps);
+    setExpandedIndices((prev) =>
+      new Set(
+        [...prev]
+          .filter((i) => i !== index)
+          .map((i) => (i > index ? i - 1 : i))
+      )
+    );
   };
 
   const duplicateStep = (index: number) => {
@@ -150,6 +202,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       wledEffectIntensity: stepToDuplicate.wledEffectIntensity,
       wledPaletteId: stepToDuplicate.wledPaletteId,
       deviceIds: [...(stepToDuplicate.deviceIds ?? [])],
+      segmentTargets: [...(stepToDuplicate.segmentTargets ?? [])],
       fixtureIds: [...(stepToDuplicate.fixtureIds ?? [])],
     };
     
@@ -164,6 +217,9 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     }));
     
     setSteps(updatedSteps);
+    setExpandedIndices((prev) =>
+      new Set([...prev].map((i) => (i > index ? i + 1 : i)).add(index + 1))
+    );
   };
 
   const updateStep = (index: number, updates: Partial<CueStep>) => {
@@ -181,6 +237,20 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     } else {
       updateStep(stepIndex, {
         deviceIds: [...step.deviceIds, deviceId],
+      });
+    }
+  };
+
+  const handleSegmentToggle = (stepIndex: number, segmentId: number) => {
+    const step = steps[stepIndex];
+    const segIds = step.segmentTargets ?? [];
+    if (segIds.includes(segmentId)) {
+      updateStep(stepIndex, {
+        segmentTargets: segIds.filter((id) => id !== segmentId),
+      });
+    } else {
+      updateStep(stepIndex, {
+        segmentTargets: [...segIds, segmentId],
       });
     }
   };
@@ -227,23 +297,24 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     }
 
     if (steps.length === 0) {
-      setError("At least one step is required");
+      setError("At least one target is required");
       return;
     }
 
     // Validate steps
     for (const step of steps) {
       const hasDevices = (step.deviceIds ?? []).length > 0;
+      const hasSegments = (step.segmentTargets ?? []).length > 0;
       const hasFixtures = (step.fixtureIds ?? []).length > 0;
-      if (!hasDevices && !hasFixtures) {
-        setError(`Step ${step.order + 1} must have at least one device or fixture selected`);
+      if (!hasDevices && !hasSegments && !hasFixtures) {
+        setError(`Target ${step.order + 1} must have at least one device, segment, or fixture selected`);
         return;
       }
       const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
       const hasEffect = step.useWledEffect && step.wledEffectId != null;
       if (!step.turnOff && !hasColorOrBrightness && !hasEffect) {
         setError(
-          `Step ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
+          `Target ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
         );
         return;
       }
@@ -276,6 +347,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           wledEffectIntensity: step.wledEffectIntensity,
           wledPaletteId: step.wledPaletteId,
           deviceIds: step.deviceIds ?? [],
+          segmentTargets: step.segmentTargets ?? [],
           fixtureIds: step.fixtureIds ?? [],
         })),
       };
@@ -307,23 +379,24 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
     }
 
     if (steps.length === 0) {
-      setError("At least one step is required");
+      setError("At least one target is required");
       return;
     }
 
     // Validate steps
     for (const step of steps) {
       const hasDevices = (step.deviceIds ?? []).length > 0;
+      const hasSegments = (step.segmentTargets ?? []).length > 0;
       const hasFixtures = (step.fixtureIds ?? []).length > 0;
-      if (!hasDevices && !hasFixtures) {
-        setError(`Step ${step.order + 1} must have at least one device or fixture selected`);
+      if (!hasDevices && !hasSegments && !hasFixtures) {
+        setError(`Target ${step.order + 1} must have at least one device, segment, or fixture selected`);
         return;
       }
       const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
       const hasEffect = step.useWledEffect && step.wledEffectId != null;
       if (!step.turnOff && !hasColorOrBrightness && !hasEffect) {
         setError(
-          `Step ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
+          `Target ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
         );
         return;
       }
@@ -356,6 +429,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           wledEffectIntensity: step.wledEffectIntensity,
           wledPaletteId: step.wledPaletteId,
           deviceIds: step.deviceIds ?? [],
+          segmentTargets: step.segmentTargets ?? [],
           fixtureIds: step.fixtureIds ?? [],
         })),
       };
@@ -457,47 +531,66 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         )}
       </div>
 
-      {/* Steps */}
+      {/* Targets */}
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-semibold text-white">Steps</h3>
+          <h3 className="text-xl font-semibold text-white">Targets</h3>
           <button
             onClick={addStep}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded text-white"
           >
-            Add Step
+            Add Target
           </button>
         </div>
 
         {steps.length === 0 ? (
           <p className="text-zinc-400 text-center py-8">
-            No steps yet. Click "Add Step" to create one.
+            No targets yet. Click &quot;Add Target&quot; to create one.
           </p>
         ) : (
           <div className="space-y-4">
             {steps.map((step, index) => (
-              <div
+              <Collapsible
                 key={index}
-                className="p-4 bg-zinc-800 rounded-lg border border-zinc-700"
+                open={expandedIndices.has(index)}
+                onOpenChange={(open) => {
+                  setExpandedIndices((prev) => {
+                    const next = new Set(prev);
+                    if (open) next.add(index);
+                    else next.delete(index);
+                    return next;
+                  });
+                }}
               >
-                <div className="flex justify-between items-start mb-4">
-                  <h4 className="text-lg font-semibold text-white">Step {step.order + 1}</h4>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => duplicateStep(index)}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm"
-                    >
-                      Duplicate
-                    </button>
-                    <button
-                      onClick={() => removeStep(index)}
-                      className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-sm"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-
+                <div className="bg-zinc-800 rounded-lg border border-zinc-700">
+                  <CollapsibleTrigger asChild>
+                    <div className="flex justify-between items-center p-4 cursor-pointer hover:bg-zinc-750 rounded-t-lg">
+                      <div className="flex items-center gap-2">
+                        {expandedIndices.has(index) ? (
+                          <ChevronDown className="w-5 h-5 text-zinc-400 shrink-0" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-zinc-400 shrink-0" />
+                        )}
+                        <h4 className="text-lg font-semibold text-white">Target {step.order + 1}</h4>
+                      </div>
+                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => duplicateStep(index)}
+                          className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm"
+                        >
+                          Duplicate
+                        </button>
+                        <button
+                          onClick={() => removeStep(index)}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-4 pb-4 pt-0 border-t border-zinc-700">
                 {/* Turn Off Option */}
                 <div className="mb-4">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -771,41 +864,67 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                   <div className="flex flex-col gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2 text-zinc-300">
-                        Target Devices (WLED)
+                        Target Devices & Segments (WLED)
                       </label>
                       {devices.length === 0 ? (
                         <p className="text-zinc-400 text-sm">
                           No WLED devices. Add devices or use fixtures below.
                         </p>
                       ) : (
-                        <ScrollArea className="h-32 w-full rounded-md border border-zinc-700 bg-zinc-800/50">
+                        <ScrollArea className="h-40 w-full rounded-md border border-zinc-700 bg-zinc-800/50">
                           <div className="flex flex-col gap-0.5 p-1.5">
                             {devices.map((device) => {
                               const isConnected = getDeviceConnectionStatus(device.id)?.isConnected ?? false;
                               const devIds = step.deviceIds ?? [];
-                              const checked = devIds.includes(device.id);
+                              const segIds = step.segmentTargets ?? [];
+                              const wholeChecked = devIds.includes(device.id);
+                              const deviceSegments = segmentsByDevice[device.id] ?? [];
                               return (
-                                <label
-                                  key={device.id}
-                                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer border ${
-                                    checked
-                                      ? "bg-blue-600 border-blue-500 text-white"
-                                      : "bg-transparent border-transparent text-zinc-300 hover:bg-zinc-700/50"
-                                  } ${!isConnected ? "opacity-90" : ""}`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => handleDeviceToggle(index, device.id)}
-                                    className="h-4 w-4 rounded border-zinc-600"
-                                  />
-                                  <span className="truncate text-sm">
-                                    {device.name}
-                                    {!isConnected && (
-                                      <span className="ml-1 text-xs opacity-80">(offline)</span>
-                                    )}
-                                  </span>
-                                </label>
+                                <div key={device.id} className="flex flex-col gap-0.5">
+                                  <label
+                                    className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer border ${
+                                      wholeChecked
+                                        ? "bg-blue-600 border-blue-500 text-white"
+                                        : "bg-transparent border-transparent text-zinc-300 hover:bg-zinc-700/50"
+                                    } ${!isConnected ? "opacity-90" : ""}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={wholeChecked}
+                                      onChange={() => handleDeviceToggle(index, device.id)}
+                                      className="h-4 w-4 rounded border-zinc-600"
+                                    />
+                                    <span className="truncate text-sm">
+                                      {device.name} (whole device)
+                                      {!isConnected && (
+                                        <span className="ml-1 text-xs opacity-80">(offline)</span>
+                                      )}
+                                    </span>
+                                  </label>
+                                  {deviceSegments.map((seg) => {
+                                    const segChecked = segIds.includes(seg.id);
+                                    return (
+                                      <label
+                                        key={seg.id}
+                                        className={`flex items-center gap-2 pl-6 pr-2 py-1 rounded cursor-pointer border text-sm ${
+                                          segChecked
+                                            ? "bg-blue-600/80 border-blue-500/80 text-white"
+                                            : "bg-transparent border-transparent text-zinc-400 hover:bg-zinc-700/50"
+                                        }`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={segChecked}
+                                          onChange={() => handleSegmentToggle(index, seg.id)}
+                                          className="h-4 w-4 rounded border-zinc-600"
+                                        />
+                                        <span className="truncate">
+                                          {seg.name} (segment {seg.wledSegmentIndex})
+                                        </span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
                               );
                             })}
                           </div>
@@ -894,7 +1013,10 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                     </div>
                   </div>
                 </div>
-              </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
             ))}
           </div>
         )}

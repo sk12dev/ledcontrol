@@ -25,6 +25,7 @@ const stepSchemaBase = z.object({
   wledEffectIntensity: z.number().int().min(0).max(255).optional().nullable(),
   wledPaletteId: z.number().int().min(0).optional().nullable(),
   deviceIds: z.array(z.number().int().positive()).default([]),
+  segmentTargets: z.array(z.number().int().positive()).default([]),
   fixtureIds: z.array(z.number().int().positive()).default([]),
 });
 
@@ -35,7 +36,7 @@ const stepRefine = (step: z.infer<typeof stepSchemaBase>) => {
 };
 
 const deviceFixtureRefine = (step: z.infer<typeof stepSchemaBase>) =>
-  step.deviceIds.length > 0 || step.fixtureIds.length > 0;
+  step.deviceIds.length > 0 || step.segmentTargets.length > 0 || step.fixtureIds.length > 0;
 
 const stepSchema = stepSchemaBase
   .refine(deviceFixtureRefine, {
@@ -71,6 +72,25 @@ const updateCueSchema = z.object({
   userId: z.number().int().positive().optional(),
   steps: z.array(updateStepSchema).min(1).optional(),
 });
+
+async function buildCueStepDevicesCreate(
+  stepDeviceIds: number[],
+  stepSegmentTargets: number[]
+): Promise<Array<{ deviceId: number; wledSegmentId: number | null }>> {
+  const rows: Array<{ deviceId: number; wledSegmentId: number | null }> = stepDeviceIds.map(
+    (deviceId) => ({ deviceId, wledSegmentId: null })
+  );
+  if (stepSegmentTargets.length > 0) {
+    const segments = await prisma.wledSegment.findMany({
+      where: { id: { in: stepSegmentTargets } },
+      select: { id: true, deviceId: true },
+    });
+    for (const s of segments) {
+      rows.push({ deviceId: s.deviceId, wledSegmentId: s.id });
+    }
+  }
+  return rows;
+}
 
 // GET /api/cues - List all cues
 cuesRouter.get("/", async (req: Request, res: Response) => {
@@ -111,6 +131,14 @@ cuesRouter.get("/", async (req: Request, res: Response) => {
                     id: true,
                     name: true,
                     ipAddress: true,
+                  },
+                },
+                wledSegment: {
+                  select: {
+                    id: true,
+                    name: true,
+                    wledSegmentIndex: true,
+                    deviceId: true,
                   },
                 },
               },
@@ -172,6 +200,14 @@ cuesRouter.get("/:id", async (req: Request, res: Response) => {
                     ipAddress: true,
                   },
                 },
+                wledSegment: {
+                  select: {
+                    id: true,
+                    name: true,
+                    wledSegmentIndex: true,
+                    deviceId: true,
+                  },
+                },
               },
             },
             cueStepFixtures: {
@@ -220,8 +256,10 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
     }
 
     const deviceIds = validatedData.steps.flatMap((step) => step.deviceIds ?? []);
+    const segmentTargetIds = validatedData.steps.flatMap((step) => step.segmentTargets ?? []);
     const fixtureIds = validatedData.steps.flatMap((step) => step.fixtureIds ?? []);
     const uniqueDeviceIds = [...new Set(deviceIds)];
+    const uniqueSegmentIds = [...new Set(segmentTargetIds)];
     const uniqueFixtureIds = [...new Set(fixtureIds)];
 
     if (uniqueDeviceIds.length > 0) {
@@ -230,6 +268,15 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
       });
       if (devices.length !== uniqueDeviceIds.length) {
         return res.status(400).json({ error: "One or more device IDs not found" });
+      }
+    }
+    if (uniqueSegmentIds.length > 0) {
+      const segments = await prisma.wledSegment.findMany({
+        where: { id: { in: uniqueSegmentIds } },
+        select: { id: true },
+      });
+      if (segments.length !== uniqueSegmentIds.length) {
+        return res.status(400).json({ error: "One or more segment IDs not found" });
       }
     }
     if (uniqueFixtureIds.length > 0) {
@@ -241,7 +288,7 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
       }
     }
 
-    // Create cue with steps and device assignments
+    // Create cue with steps and device/segment assignments
     const cue = await prisma.cue.create({
       data: {
         name: validatedData.name,
@@ -249,29 +296,32 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
         showId: validatedData.showId,
         userId: validatedData.userId,
         cueSteps: {
-          create: validatedData.steps.map((step) => ({
-            order: step.order,
-            targetColor: step.targetColor || [],
-            targetBrightness: step.targetBrightness ?? null,
-            startColor: step.startColor || [],
-            startBrightness: step.startBrightness ?? null,
-            turnOff: step.turnOff ?? false,
-            useWledEffect: step.useWledEffect ?? false,
-            wledEffectId: step.wledEffectId ?? null,
-            wledEffectSpeed: step.wledEffectSpeed ?? null,
-            wledEffectIntensity: step.wledEffectIntensity ?? null,
-            wledPaletteId: step.wledPaletteId ?? null,
-            cueStepDevices: {
-              create: (step.deviceIds ?? []).map((deviceId) => ({
-                deviceId,
-              })),
-            },
-            cueStepFixtures: {
-              create: (step.fixtureIds ?? []).map((fixtureId) => ({
-                fixtureId,
-              })),
-            },
-          })),
+          create: await Promise.all(
+            validatedData.steps.map(async (step) => ({
+              order: step.order,
+              targetColor: step.targetColor || [],
+              targetBrightness: step.targetBrightness ?? null,
+              startColor: step.startColor || [],
+              startBrightness: step.startBrightness ?? null,
+              turnOff: step.turnOff ?? false,
+              useWledEffect: step.useWledEffect ?? false,
+              wledEffectId: step.wledEffectId ?? null,
+              wledEffectSpeed: step.wledEffectSpeed ?? null,
+              wledEffectIntensity: step.wledEffectIntensity ?? null,
+              wledPaletteId: step.wledPaletteId ?? null,
+              cueStepDevices: {
+                create: await buildCueStepDevicesCreate(
+                  step.deviceIds ?? [],
+                  step.segmentTargets ?? []
+                ),
+              },
+              cueStepFixtures: {
+                create: (step.fixtureIds ?? []).map((fixtureId) => ({
+                  fixtureId,
+                })),
+              },
+            }))
+          ),
         },
       },
       include: {
@@ -291,6 +341,14 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
                     id: true,
                     name: true,
                     ipAddress: true,
+                  },
+                },
+                wledSegment: {
+                  select: {
+                    id: true,
+                    name: true,
+                    wledSegmentIndex: true,
+                    deviceId: true,
                   },
                 },
               },
@@ -336,8 +394,10 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
 
     if (validatedData.steps) {
       const deviceIds = validatedData.steps.flatMap((step) => step.deviceIds ?? []);
+      const segmentTargetIds = validatedData.steps.flatMap((step) => step.segmentTargets ?? []);
       const fixtureIds = validatedData.steps.flatMap((step) => step.fixtureIds ?? []);
       const uniqueDeviceIds = [...new Set(deviceIds)];
+      const uniqueSegmentIds = [...new Set(segmentTargetIds)];
       const uniqueFixtureIds = [...new Set(fixtureIds)];
 
       if (uniqueDeviceIds.length > 0) {
@@ -346,6 +406,15 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
         });
         if (devices.length !== uniqueDeviceIds.length) {
           return res.status(400).json({ error: "One or more device IDs not found" });
+        }
+      }
+      if (uniqueSegmentIds.length > 0) {
+        const segments = await prisma.wledSegment.findMany({
+          where: { id: { in: uniqueSegmentIds } },
+          select: { id: true },
+        });
+        if (segments.length !== uniqueSegmentIds.length) {
+          return res.status(400).json({ error: "One or more segment IDs not found" });
         }
       }
       if (uniqueFixtureIds.length > 0) {
@@ -394,7 +463,7 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
           wledEffectIntensity: number | null;
           wledPaletteId: number | null;
           cueStepDevices: {
-            create: Array<{ deviceId: number }>;
+            create: Array<{ deviceId: number; wledSegmentId: number | null }>;
           };
           cueStepFixtures: {
             create: Array<{ fixtureId: number }>;
@@ -411,29 +480,32 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
 
     if (validatedData.steps) {
       updateData.cueSteps = {
-        create: validatedData.steps.map((step) => ({
-          order: step.order,
-          targetColor: step.targetColor || [],
-          targetBrightness: step.targetBrightness ?? null,
-          startColor: step.startColor || [],
-          startBrightness: step.startBrightness ?? null,
-          turnOff: step.turnOff ?? false,
-          useWledEffect: step.useWledEffect ?? false,
-          wledEffectId: step.wledEffectId ?? null,
-          wledEffectSpeed: step.wledEffectSpeed ?? null,
-          wledEffectIntensity: step.wledEffectIntensity ?? null,
-          wledPaletteId: step.wledPaletteId ?? null,
-          cueStepDevices: {
-            create: (step.deviceIds ?? []).map((deviceId) => ({
-              deviceId,
-            })),
-          },
-          cueStepFixtures: {
-            create: (step.fixtureIds ?? []).map((fixtureId) => ({
-              fixtureId,
-            })),
-          },
-        })),
+        create: await Promise.all(
+          validatedData.steps.map(async (step) => ({
+            order: step.order,
+            targetColor: step.targetColor || [],
+            targetBrightness: step.targetBrightness ?? null,
+            startColor: step.startColor || [],
+            startBrightness: step.startBrightness ?? null,
+            turnOff: step.turnOff ?? false,
+            useWledEffect: step.useWledEffect ?? false,
+            wledEffectId: step.wledEffectId ?? null,
+            wledEffectSpeed: step.wledEffectSpeed ?? null,
+            wledEffectIntensity: step.wledEffectIntensity ?? null,
+            wledPaletteId: step.wledPaletteId ?? null,
+            cueStepDevices: {
+              create: await buildCueStepDevicesCreate(
+                step.deviceIds ?? [],
+                step.segmentTargets ?? []
+              ),
+            },
+            cueStepFixtures: {
+              create: (step.fixtureIds ?? []).map((fixtureId) => ({
+                fixtureId,
+              })),
+            },
+          }))
+        ),
       };
     }
 
@@ -457,6 +529,14 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
                     id: true,
                     name: true,
                     ipAddress: true,
+                  },
+                },
+                wledSegment: {
+                  select: {
+                    id: true,
+                    name: true,
+                    wledSegmentIndex: true,
+                    deviceId: true,
                   },
                 },
               },

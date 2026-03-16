@@ -25,6 +25,8 @@ interface WLEDStateUpdate {
   bri?: number;
   seg?: Array<{
     id?: number;
+    start?: number;
+    stop?: number;
     col?: [[number, number, number, number]] | [[number, number, number, number], [number, number, number, number], [number, number, number, number]];
     fx?: number;
     sx?: number;
@@ -45,14 +47,17 @@ export interface WLEDJsonResponse {
 }
 
 /**
- * WLED State interface
+ * WLED State interface (GET /json/state response - seg is full array for per-segment read)
  */
-interface WLEDState {
+export interface WLEDState {
   on: boolean;
   bri: number;
   seg?: Array<{
     id?: number;
-    col?: [[number, number, number, number]];
+    start?: number;
+    stop?: number;
+    len?: number;
+    col?: [[number, number, number, number]] | [[number, number, number, number], [number, number, number, number], [number, number, number, number]];
   }>;
 }
 
@@ -301,13 +306,16 @@ export async function checkDeviceConnection(deviceId: number): Promise<boolean> 
 /**
  * Updates device state with specific color and brightness values.
  * Explicitly sets fx: 0 (Solid) so any previous effect is cleared.
+ * @param segmentId - Optional 0-based WLED segment id; when omitted, uses segment 0 (whole device).
  */
 export async function updateDeviceColorAndBrightness(
   deviceId: number,
   color: [number, number, number, number],
   brightness: number,
-  transition?: number
+  transition?: number,
+  segmentId?: number
 ): Promise<WLEDState> {
+  const segId = segmentId ?? 0;
   const primaryColor: [number, number, number, number] = [
     color[0],
     color[1],
@@ -318,7 +326,7 @@ export async function updateDeviceColorAndBrightness(
     bri: brightness,
     seg: [
       {
-        id: 0,
+        id: segId,
         fx: 0, // Solid - ensures we clear any previous effect
         col: [
           primaryColor,

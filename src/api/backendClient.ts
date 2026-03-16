@@ -368,6 +368,66 @@ export const devicesApi = {
 };
 
 /**
+ * Create WLED segment request
+ */
+export interface CreateWledSegmentRequest {
+  name: string;
+  wledSegmentIndex: number;
+  start?: number | null;
+  stop?: number | null;
+  pushToWled?: boolean;
+}
+
+/**
+ * Update WLED segment request
+ */
+export interface UpdateWledSegmentRequest {
+  name?: string;
+  start?: number | null;
+  stop?: number | null;
+}
+
+/**
+ * WLED Segments API (per device)
+ */
+export const wledSegmentsApi = {
+  async list(deviceId: number): Promise<WledSegment[]> {
+    const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments`);
+    return handleResponse<WledSegment[]>(response);
+  },
+  async getFromWled(deviceId: number): Promise<unknown[]> {
+    const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments/from-wled`);
+    return handleResponse<unknown[]>(response);
+  },
+  async create(deviceId: number, body: CreateWledSegmentRequest): Promise<WledSegment> {
+    const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return handleResponse<WledSegment>(response);
+  },
+  async get(deviceId: number, segmentId: number): Promise<WledSegment> {
+    const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments/${segmentId}`);
+    return handleResponse<WledSegment>(response);
+  },
+  async update(deviceId: number, segmentId: number, body: UpdateWledSegmentRequest): Promise<WledSegment> {
+    const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments/${segmentId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return handleResponse<WledSegment>(response);
+  },
+  async delete(deviceId: number, segmentId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments/${segmentId}`, {
+      method: "DELETE",
+    });
+    return handleResponse<void>(response);
+  },
+};
+
+/**
  * WLED full JSON response from device proxy
  */
 export interface WLEDJsonResponse {
@@ -517,16 +577,37 @@ export const colorPresetsApi = {
 };
 
 /**
- * Cue Step Device assignment
+ * WLED Segment (named segment on a device for cue targets)
+ */
+export interface WledSegment {
+  id: number;
+  deviceId: number;
+  name: string;
+  wledSegmentIndex: number;
+  start: number | null;
+  stop: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Cue Step Device assignment (whole device or specific segment)
  */
 export interface CueStepDevice {
   id: number;
   deviceId: number;
+  wledSegmentId: number | null;
   device: {
     id: number;
     name: string;
     ipAddress: string;
   };
+  wledSegment?: {
+    id: number;
+    name: string;
+    wledSegmentIndex: number;
+    deviceId: number;
+  } | null;
 }
 
 /**
@@ -604,6 +685,7 @@ export interface CreateCueRequest {
     wledEffectIntensity?: number | null;
     wledPaletteId?: number | null;
     deviceIds?: number[];
+    segmentTargets?: number[];
     fixtureIds?: number[];
   }>;
 }
@@ -630,6 +712,7 @@ export interface UpdateCueRequest {
     wledEffectIntensity?: number | null;
     wledPaletteId?: number | null;
     deviceIds?: number[];
+    segmentTargets?: number[];
     fixtureIds?: number[];
   }>;
 }

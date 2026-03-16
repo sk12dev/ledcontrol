@@ -16,6 +16,12 @@ export interface ExecuteCueOptions {
   transitionDurationSeconds?: number;
 }
 
+/** Device target: deviceId + optional segment index (0 = whole device) */
+interface DeviceTarget {
+  deviceId: number;
+  segmentIndex: number;
+}
+
 interface CueStepWithTargets {
   id: number;
   order: number;
@@ -29,7 +35,7 @@ interface CueStepWithTargets {
   wledEffectSpeed: number | null;
   wledEffectIntensity: number | null;
   wledPaletteId: number | null;
-  devices: number[];
+  deviceTargets: DeviceTarget[];
   fixtures: number[];
 }
 
@@ -52,7 +58,8 @@ class CueExecutionService {
 
   private activeTimeouts: Set<NodeJS.Timeout> = new Set();
   private activeIntervals: Set<NodeJS.Timeout> = new Set();
-  private transitionFrames: Map<number, NodeJS.Timeout> = new Map(); // deviceId -> interval
+  /** Key: "deviceId:segmentIndex" for per-segment transitions */
+  private transitionFrames: Map<string, NodeJS.Timeout> = new Map();
   private fixtureTransitionFrames: Map<number, NodeJS.Timeout> = new Map(); // fixtureId -> interval
   /** Last-sent state per fixture for crossfade (avoid starting from black). */
   private fixtureLastState: Map<number, { color: number[]; brightness: number }> = new Map();
@@ -86,7 +93,9 @@ class CueExecutionService {
       include: {
         cueSteps: {
           include: {
-            cueStepDevices: { select: { deviceId: true } },
+            cueStepDevices: {
+              include: { wledSegment: { select: { wledSegmentIndex: true } } },
+            },
             cueStepFixtures: { select: { fixtureId: true } },
           },
           orderBy: { order: "asc" },
@@ -109,7 +118,7 @@ class CueExecutionService {
       startBrightness: number | null; turnOff: boolean; useWledEffect: boolean;
       wledEffectId: number | null; wledEffectSpeed: number | null;
       wledEffectIntensity: number | null; wledPaletteId: number | null;
-      cueStepDevices: Array<{ deviceId: number }>;
+      cueStepDevices: Array<{ deviceId: number; wledSegmentId: number | null; wledSegment: { wledSegmentIndex: number } | null }>;
       cueStepFixtures: Array<{ fixtureId: number }>;
     }) => ({
       id: step.id,
@@ -124,7 +133,10 @@ class CueExecutionService {
       wledEffectSpeed: step.wledEffectSpeed ?? null,
       wledEffectIntensity: step.wledEffectIntensity ?? null,
       wledPaletteId: step.wledPaletteId ?? null,
-      devices: step.cueStepDevices.map((csd) => csd.deviceId),
+      deviceTargets: step.cueStepDevices.map((csd) => ({
+        deviceId: csd.deviceId,
+        segmentIndex: csd.wledSegment?.wledSegmentIndex ?? 0,
+      })),
       fixtures: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
     }));
 
@@ -139,8 +151,8 @@ class CueExecutionService {
     try {
       console.log(`[ExecutionService] Applying snapshot for cue ${cueId} over ${transitionDurationSeconds}s`);
       const devicePromises = steps.flatMap((step) =>
-        step.devices.map((deviceId) =>
-          this.executeDeviceTransition(step, deviceId, transitionDurationSeconds)
+        step.deviceTargets.map((t) =>
+          this.executeDeviceTransition(step, t.deviceId, transitionDurationSeconds, t.segmentIndex)
         )
       );
       const fixturePromises = steps.flatMap((step) =>
@@ -170,17 +182,20 @@ class CueExecutionService {
   }
 
   /**
-   * Execute a transition for a WLED device. Always uses current live state as start (crossfade).
+   * Execute a transition for a WLED device (or a specific segment). Always uses current live state as start (crossfade).
+   * @param segmentIndex - 0 = whole device / first segment; otherwise WLED segment id
    */
   private async executeDeviceTransition(
     step: CueStepWithTargets,
     deviceId: number,
-    transitionDurationSeconds: number
+    transitionDurationSeconds: number,
+    segmentIndex: number = 0
   ): Promise<void> {
-    const existing = this.transitionFrames.get(deviceId);
+    const frameKey = `${deviceId}:${segmentIndex}`;
+    const existing = this.transitionFrames.get(frameKey);
     if (existing) {
       clearInterval(existing);
-      this.transitionFrames.delete(deviceId);
+      this.transitionFrames.delete(frameKey);
     }
 
     if (step.turnOff) {
@@ -201,7 +216,7 @@ class CueExecutionService {
           ? [step.targetColor[0], step.targetColor[1], step.targetColor[2], step.targetColor[3] ?? 0]
           : [255, 255, 255, 0];
       const segmentUpdate = {
-        id: 0,
+        id: segmentIndex,
         fx: step.wledEffectId,
         sx: step.wledEffectSpeed ?? 128,
         ix: step.wledEffectIntensity ?? 128,
@@ -225,23 +240,19 @@ class CueExecutionService {
       return;
     }
 
-    // Crossfade: always use current device state as start (ignore step.startColor/startBrightness)
+    // Crossfade: always use current device state as start (per-segment when targeting a segment)
     let startColor: number[] = [0, 0, 0, 0];
     let startBrightness = 128;
     try {
       const currentState = await getDeviceState(deviceId);
-      if (
-        currentState.seg &&
-        currentState.seg.length > 0 &&
-        currentState.seg[0].col &&
-        currentState.seg[0].col[0]
-      ) {
-        startColor = currentState.seg[0].col[0];
+      const seg = currentState.seg;
+      const segmentState = seg && segmentIndex < seg.length ? seg[segmentIndex] : seg?.[0];
+      if (segmentState?.col && Array.isArray(segmentState.col[0])) {
+        startColor = segmentState.col[0] as number[];
       }
       startBrightness = currentState.bri;
     } catch (error) {
       console.error(`Failed to get current state for device ${deviceId}:`, error);
-      // Use dim default instead of black to avoid visible flash
       startColor = [1, 1, 1, 0];
       startBrightness = 10;
     }
@@ -270,20 +281,20 @@ class CueExecutionService {
       );
 
       try {
-        await updateDeviceColorAndBrightness(deviceId, currentColor, currentBrightness, 0);
+        await updateDeviceColorAndBrightness(deviceId, currentColor, currentBrightness, 0, segmentIndex);
       } catch (error) {
         console.error(`Failed to update device ${deviceId} during transition:`, error);
       }
 
       if (progress >= 1.0) {
         clearInterval(interval);
-        this.transitionFrames.delete(deviceId);
+        this.transitionFrames.delete(frameKey);
         this.activeIntervals.delete(interval);
       }
     }, this.FRAME_INTERVAL);
 
     this.activeIntervals.add(interval);
-    this.transitionFrames.set(deviceId, interval as unknown as NodeJS.Timeout);
+    this.transitionFrames.set(frameKey, interval as unknown as NodeJS.Timeout);
   }
 
   /**

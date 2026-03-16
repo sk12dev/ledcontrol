@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Request, Response } from "express";
 import { connectionManager } from "../services/connectionManager.js";
 import { fetchWledJson } from "../services/wledService.js";
+import { wledSegmentsRouter } from "./wledSegments.js";
 // @ts-ignore - File outside rootDir, excluded from compilation but available at runtime
 import type * as Prisma from "../../../src/generated/prisma/internal/prismaNamespace.js";
 // @ts-ignore - File outside rootDir, excluded from compilation but available at runtime
@@ -84,6 +85,9 @@ devicesRouter.get("/connection-status", async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to fetch connection statuses" });
   }
 });
+
+// Mount WLED segments under /api/devices/:deviceId/segments (must be before /:id so :deviceId is available)
+devicesRouter.use("/:deviceId/segments", wledSegmentsRouter);
 
 // GET /api/devices/:id/wled/json - Proxy WLED full JSON (state, info, effects, palettes)
 // NOTE: Must be defined before /:id route

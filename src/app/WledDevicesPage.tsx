@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Zap } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { MultiDeviceManager } from "@/components/MultiDeviceManager";
+import { WledSegmentsManager } from "@/components/WledSegmentsManager";
 
 export default function WledDevicesPage() {
   const navigate = useNavigate();
@@ -39,11 +40,16 @@ export default function WledDevicesPage() {
 
       {/* Main Content */}
       <div className="container mx-auto px-6 py-8">
-        <div className="max-w-3xl">
-          <p className="text-zinc-400 mb-6">
-            Add, edit, and manage WLED devices. You can also add devices from the workspace when working on a show.
-          </p>
-          <MultiDeviceManager />
+        <div className="max-w-3xl space-y-8">
+          <div>
+            <p className="text-zinc-400 mb-6">
+              Add, edit, and manage WLED devices. You can also add devices from the workspace when working on a show.
+            </p>
+            <MultiDeviceManager />
+          </div>
+          <div>
+            <WledSegmentsManager />
+          </div>
         </div>
       </div>
     </div>

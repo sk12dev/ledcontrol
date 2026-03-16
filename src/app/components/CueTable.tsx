@@ -27,7 +27,7 @@ type SortDir = "asc" | "desc";
 const columns: { key: SortKey; label: string; className?: string }[] = [
   { key: "id", label: "ID", className: "w-16" },
   { key: "name", label: "Name", className: "min-w-[140px]" },
-  { key: "stepsCount", label: "Steps", className: "w-20" },
+  { key: "stepsCount", label: "Targets", className: "w-20" },
   { key: "duration", label: "Duration", className: "w-24" },
   { key: "deviceCount", label: "Devices", className: "w-22" },
   { key: "createdAt", label: "Created", className: "w-32" },

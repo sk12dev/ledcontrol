@@ -22,13 +22,34 @@ model Device {
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamp
 
   // Relations
-  presets      Preset[]
-  userPrefs    UserPreference[]
+  presets       Preset[]
+  userPrefs     UserPreference[]
+  wledSegments  WledSegment[]
   cueStepDevices CueStepDevice[]
   buskingPatchEntries BuskingPatchEntry[]
 
   @@index([ipAddress])
   @@map("devices")
+}
+
+// WLED Segment - Named segment on a device for use as cue target
+model WledSegment {
+  id                Int      @id @default(autoincrement())
+  deviceId          Int      @map("device_id")
+  name              String   @db.VarChar(255)
+  wledSegmentIndex  Int      @map("wled_segment_index") // 0-based, matches WLED seg[id]
+  start             Int?     // LED start index (optional, for push to WLED)
+  stop              Int?     // LED stop index (optional)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamp
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamp
+
+  // Relations
+  device         Device          @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  cueStepDevices CueStepDevice[]
+
+  @@unique([deviceId, wledSegmentIndex])
+  @@index([deviceId])
+  @@map("wled_segments")
 }
 
 // Custom Preset model
@@ -231,20 +252,23 @@ model CueStep {
   @@map("cue_steps")
 }
 
-// CueStepDevice model - Links cue steps to target devices
+// CueStepDevice model - Links cue steps to target devices (whole device or specific segment)
 model CueStepDevice {
-  id        Int      @id @default(autoincrement())
-  cueStepId Int      @map("cue_step_id")
-  deviceId  Int      @map("device_id")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+  id            Int      @id @default(autoincrement())
+  cueStepId     Int      @map("cue_step_id")
+  deviceId      Int      @map("device_id")
+  wledSegmentId Int?     @map("wled_segment_id") // null = whole device (segment 0), set = that segment only
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamp
 
   // Relations
-  cueStep CueStep @relation(fields: [cueStepId], references: [id], onDelete: Cascade)
-  device  Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  cueStep     CueStep     @relation(fields: [cueStepId], references: [id], onDelete: Cascade)
+  device      Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  wledSegment WledSegment? @relation(fields: [wledSegmentId], references: [id], onDelete: Cascade)
 
-  @@unique([cueStepId, deviceId])
+  @@unique([cueStepId, deviceId, wledSegmentId])
   @@index([cueStepId])
   @@index([deviceId])
+  @@index([wledSegmentId])
   @@map("cue_step_devices")
 }
 
