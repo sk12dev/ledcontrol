@@ -919,7 +919,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                                           className="h-4 w-4 rounded border-zinc-600"
                                         />
                                         <span className="truncate">
-                                          {seg.name} (segment {seg.wledSegmentIndex})
+                                          {seg.name || `Segment ${seg.wledSegmentIndex}`} (index {seg.wledSegmentIndex})
                                         </span>
                                       </label>
                                     );

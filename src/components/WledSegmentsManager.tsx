@@ -134,9 +134,9 @@ export function WledSegmentsManager() {
         return;
       }
       for (let i = 0; i < segs.length; i++) {
-        const s = segs[i] as { id?: number; start?: number; stop?: number; len?: number };
+        const s = segs[i] as { id?: number; start?: number; stop?: number; len?: number; name?: string; n?: string };
         const id = s.id ?? i;
-        const name = `Segment ${id}`;
+        const name = s.name ?? s.n ?? `Segment ${id}`;
         try {
           await wledSegmentsApi.create(deviceId, {
             name,

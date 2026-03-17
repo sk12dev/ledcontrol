@@ -395,9 +395,13 @@ export const wledSegmentsApi = {
     const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments`);
     return handleResponse<WledSegment[]>(response);
   },
-  async getFromWled(deviceId: number): Promise<unknown[]> {
+  async getFromWled(
+    deviceId: number
+  ): Promise<Array<{ id?: number; start?: number; stop?: number; len?: number; wledSegmentIndex?: number; name?: string; n?: string }>> {
     const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments/from-wled`);
-    return handleResponse<unknown[]>(response);
+    return handleResponse<
+      Array<{ id?: number; start?: number; stop?: number; len?: number; wledSegmentIndex?: number; name?: string; n?: string }>
+    >(response);
   },
   async create(deviceId: number, body: CreateWledSegmentRequest): Promise<WledSegment> {
     const response = await fetch(`${API_BASE_URL}/devices/${deviceId}/segments`, {

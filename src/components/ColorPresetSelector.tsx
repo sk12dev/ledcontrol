@@ -15,7 +15,13 @@ import {
   SelectValue,
 } from "@/app/components/ui/select";
 import type { WLEDColor } from "../types/wled";
-import { colorPresetsApi, type ColorPreset, type CreateColorPresetRequest } from "../api/backendClient";
+import {
+  colorPresetsApi,
+  presetsApi,
+  type ColorPreset,
+  type CreateColorPresetRequest,
+  type Preset,
+} from "../api/backendClient";
 
 interface ColorPresetSelectorProps {
   selectedColor: WLEDColor | null;
@@ -36,10 +42,15 @@ export function ColorPresetSelector({
   onColorSelect,
   disabled = false,
 }: ColorPresetSelectorProps) {
+  type UnifiedPreset =
+    | { key: `c-${number}`; source: "colorPreset"; id: number; name: string; color: WLEDColor }
+    | { key: `p-${number}`; source: "preset"; id: number; name: string; color: WLEDColor; brightness: number };
+
   const [colorPresets, setColorPresets] = useState<ColorPreset[]>([]);
+  const [presets, setPresets] = useState<Preset[]>([]);
   const [presetName, setPresetName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [manageOpen, setManageOpen] = useState(false);
 
@@ -47,8 +58,12 @@ export function ColorPresetSelector({
     const loadColorPresets = async () => {
       try {
         setIsLoading(true);
-        const presets = await colorPresetsApi.getAll();
-        setColorPresets(presets);
+        const [colorList, presetList] = await Promise.all([
+          colorPresetsApi.getAll().catch(() => []),
+          presetsApi.getAll().catch(() => []),
+        ]);
+        setColorPresets(colorList);
+        setPresets(presetList);
       } catch (error) {
         console.error("Failed to load color presets:", error);
       } finally {
@@ -77,18 +92,43 @@ export function ColorPresetSelector({
     }
   };
 
-  const handleSelectPreset = (preset: ColorPreset) => {
+  const handleSelectPreset = (preset: { color: WLEDColor }) => {
     onColorSelect(preset.color);
   };
 
-  const handleDeletePreset = async (id: number, e: React.MouseEvent<HTMLButtonElement>) => {
+  const unified: UnifiedPreset[] = [
+    ...presets.map((p) => ({
+      key: `p-${p.id}` as const,
+      source: "preset" as const,
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      brightness: p.brightness,
+    })),
+    ...colorPresets.map((p) => ({
+      key: `c-${p.id}` as const,
+      source: "colorPreset" as const,
+      id: p.id,
+      name: p.name,
+      color: p.color,
+    })),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  const handleDeletePreset = async (key: string, e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm("Are you sure you want to delete this color preset?")) return;
-    setIsDeleting(id);
+    setIsDeleting(key);
     try {
-      await colorPresetsApi.delete(id);
-      setColorPresets((prev) => prev.filter((p) => p.id !== id));
+      if (key.startsWith("c-")) {
+        const id = parseInt(key.slice(2), 10);
+        await colorPresetsApi.delete(id);
+        setColorPresets((prev) => prev.filter((p) => p.id !== id));
+      } else if (key.startsWith("p-")) {
+        const id = parseInt(key.slice(2), 10);
+        await presetsApi.delete(id);
+        setPresets((prev) => prev.filter((p) => p.id !== id));
+      }
     } catch (error) {
       console.error("Error deleting color preset:", error);
       alert("Failed to delete color preset. Please try again.");
@@ -107,7 +147,7 @@ export function ColorPresetSelector({
         <Select
           value=""
           onValueChange={(value) => {
-            const preset = colorPresets.find((p) => p.id === parseInt(value, 10));
+            const preset = unified.find((p) => p.key === value);
             if (preset && !disabled) handleSelectPreset(preset);
           }}
           disabled={disabled || isLoading}
@@ -116,11 +156,11 @@ export function ColorPresetSelector({
             <SelectValue placeholder="Presets..." />
           </SelectTrigger>
           <SelectContent>
-            {colorPresets.length === 0 ? (
+            {unified.length === 0 ? (
               <div className="py-4 text-center text-sm text-zinc-500">No presets saved</div>
             ) : (
-              colorPresets.map((preset) => (
-                <SelectItem key={preset.id} value={String(preset.id)}>
+              unified.map((preset) => (
+                <SelectItem key={preset.key} value={preset.key}>
                   <span className="flex items-center gap-2">
                     <span
                       className="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"
@@ -157,7 +197,7 @@ export function ColorPresetSelector({
         )}
       </div>
 
-      {colorPresets.length > 0 && (
+      {unified.length > 0 && (
         <div>
           <button
             type="button"
@@ -168,9 +208,9 @@ export function ColorPresetSelector({
           </button>
           {manageOpen && (
             <div className="mt-2 space-y-1 max-h-32 overflow-y-auto rounded border border-zinc-700 bg-zinc-800 p-2">
-              {colorPresets.map((preset) => (
+              {unified.map((preset) => (
                 <div
-                  key={preset.id}
+                  key={preset.key}
                   className="flex items-center gap-2 py-1 px-2 rounded hover:bg-zinc-700/50"
                 >
                   <span
@@ -183,8 +223,8 @@ export function ColorPresetSelector({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={(e) => handleDeletePreset(preset.id, e)}
-                    disabled={disabled || isDeleting === preset.id}
+                    onClick={(e) => handleDeletePreset(preset.key, e)}
+                    disabled={disabled || isDeleting === preset.key}
                     className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-950/20"
                     aria-label={`Delete ${preset.name}`}
                   >

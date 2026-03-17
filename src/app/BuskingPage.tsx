@@ -29,9 +29,13 @@ import {
   executionApi,
   cuesApi,
   buskingPatchApi,
+  presetsApi,
+  colorPresetsApi,
   type CreateCueRequest,
   type BuskingPatchEntry,
   type BuskingPatchEntryInput,
+  type Preset,
+  type ColorPreset,
 } from "@/api/backendClient";
 import { parseBuskingCommand } from "@/app/busking/commandParser";
 import {
@@ -76,6 +80,27 @@ function rgbToHex(r: number, g: number, b: number): string {
 const LIVE_DEBOUNCE_MS = 120;
 // Ctrl+Shift+@ to open/close command drawer
 
+function colorToHex(color: [number, number, number, number]): string {
+  const [r, g, b] = color;
+  return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+function namedColorToRgba(name: string): [number, number, number, number] | null {
+  const n = name.trim().toLowerCase();
+  const table: Record<string, [number, number, number, number]> = {
+    red: [255, 0, 0, 0],
+    green: [0, 255, 0, 0],
+    blue: [0, 0, 255, 0],
+    white: [255, 255, 255, 0],
+    yellow: [255, 255, 0, 0],
+    cyan: [0, 255, 255, 0],
+    magenta: [255, 0, 255, 0],
+    orange: [255, 165, 0, 0],
+    purple: [128, 0, 128, 0],
+  };
+  return table[n] ?? null;
+}
+
 export default function BuskingPage() {
   const navigate = useNavigate();
   const { fixtures, loading: fixturesLoading } = useDmxFixtures();
@@ -106,11 +131,63 @@ export default function BuskingPage() {
   const [commandMessage, setCommandMessage] = useState<string | null>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
 
+  // Command drawer color presets
+  type UnifiedPreset =
+    | { key: `p-${number}`; source: "preset"; id: number; name: string; color: [number, number, number, number]; brightness: number }
+    | { key: `c-${number}`; source: "colorPreset"; id: number; name: string; color: [number, number, number, number] };
+  const [commandPresetsLoading, setCommandPresetsLoading] = useState(true);
+  const [commandColorPresets, setCommandColorPresets] = useState<ColorPreset[]>([]);
+  const [commandPresets, setCommandPresets] = useState<Preset[]>([]);
+
   const units: Unit[] = useMemo(() => {
     const devs: Unit[] = devices.map((d) => ({ type: "device", id: d.id, name: d.name }));
     const fixs: Unit[] = fixtures.map((f) => ({ type: "fixture", id: f.id, name: f.name }));
     return [...devs, ...fixs];
   }, [devices, fixtures]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setCommandPresetsLoading(true);
+        const [presetList, colorList] = await Promise.all([
+          presetsApi.getAll().catch(() => []),
+          colorPresetsApi.getAll().catch(() => []),
+        ]);
+        if (cancelled) return;
+        setCommandPresets(presetList);
+        setCommandColorPresets(colorList);
+      } finally {
+        if (!cancelled) setCommandPresetsLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const unifiedColorPresets: UnifiedPreset[] = useMemo(() => {
+    const unified: UnifiedPreset[] = [
+      ...commandPresets.map((p) => ({
+        key: `p-${p.id}` as const,
+        source: "preset" as const,
+        id: p.id,
+        name: p.name,
+        color: p.color,
+        brightness: p.brightness,
+      })),
+      ...commandColorPresets.map((p) => ({
+        key: `c-${p.id}` as const,
+        source: "colorPreset" as const,
+        id: p.id,
+        name: p.name,
+        color: p.color,
+      })),
+    ];
+    unified.sort((a, b) => a.name.localeCompare(b.name));
+    return unified;
+  }, [commandPresets, commandColorPresets]);
 
   const patchMapByFixtureNumber = useMemo(() => {
     const map = new Map<number, BuskingPatchEntry>();
@@ -342,13 +419,29 @@ export default function BuskingPage() {
     if (!line) return;
     const parsed = parseBuskingCommand(line);
     if (!parsed) {
-      setCommandMessage("Unknown command. Try: 1 @ 50, 1 Thru 5 Full, 1 Off");
+      setCommandMessage("Unknown command. Try: 1 @ 50, 1 Thru 5 Full, 1 Off, 1 @ 50 color Red");
       return;
     }
     if (parsed.error) {
       setCommandMessage(parsed.error);
       return;
     }
+
+    const resolvedColor =
+      parsed.colorName != null
+        ? (() => {
+            const match = unifiedColorPresets.find(
+              (p) => p.name.toLowerCase() === parsed.colorName!.trim().toLowerCase()
+            );
+            if (match) return match.color;
+            return namedColorToRgba(parsed.colorName!);
+          })()
+        : null;
+    if (parsed.colorName && !resolvedColor) {
+      setCommandMessage(`Unknown color '${parsed.colorName}'. Pick one from the dropdown or save it as a preset.`);
+      return;
+    }
+
     const brightness = parsed.off ? 0 : Math.round(((parsed.level ?? 100) / 100) * 255);
     const on = !parsed.off;
     const targets: Unit[] = [];
@@ -369,7 +462,7 @@ export default function BuskingPage() {
     }
     const bri = on ? Math.max(1, brightness) : 0;
     for (const unit of targets) {
-      updateUnitState(unit, { brightness: bri, on });
+      updateUnitState(unit, { brightness: bri, on, ...(on && resolvedColor ? { color: resolvedColor } : {}) });
     }
     setCommandMessage(`OK: ${targets.length} fixture(s)`);
     setCommandLine("");
@@ -378,6 +471,7 @@ export default function BuskingPage() {
     patchMapByFixtureNumber,
     getUnitByPatchEntry,
     updateUnitState,
+    unifiedColorPresets,
   ]);
 
   useEffect(() => {
@@ -693,11 +787,11 @@ export default function BuskingPage() {
           <SheetHeader className="border-b border-zinc-800 px-4 py-3 shrink-0">
             <SheetTitle className="text-white text-base">Command line</SheetTitle>
             <p className="text-xs text-zinc-500 mt-1">
-              1 @ 50 | 1 Thru 5 Full | 1 Off
+              1 @ 50 | 1 Thru 5 Full | 1 Off | 1 @ 50 color Red
             </p>
           </SheetHeader>
           <div className="p-4 flex flex-col gap-2">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <Input
                 ref={commandInputRef}
                 value={commandLine}
@@ -709,9 +803,47 @@ export default function BuskingPage() {
                   }
                 }}
                 placeholder="1 @ 50"
-                className="bg-zinc-800 border-zinc-700 text-white font-mono flex-1"
+                className="bg-zinc-800 border-zinc-700 text-white font-mono flex-1 min-w-[240px]"
                 autoFocus
               />
+              <Select
+                value=""
+                disabled={commandPresetsLoading || unifiedColorPresets.length === 0}
+                onValueChange={(value) => {
+                  const preset = unifiedColorPresets.find((p) => p.key === value);
+                  if (!preset) return;
+                  setCommandLine((prev) => {
+                    const base = prev.replace(/\s+color\s+.+$/i, "").trimEnd();
+                    return (base ? `${base} ` : "") + `color ${preset.name}`;
+                  });
+                }}
+              >
+                <SelectTrigger className="w-[220px] bg-zinc-800 border-zinc-700 text-white">
+                  <SelectValue
+                    placeholder={
+                      commandPresetsLoading
+                        ? "Loading colors..."
+                        : unifiedColorPresets.length === 0
+                          ? "No presets"
+                          : "Preset color..."
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-800 border-zinc-700 text-white">
+                  {unifiedColorPresets.map((p) => (
+                    <SelectItem key={p.key} value={p.key} className="text-white focus:bg-zinc-700 focus:text-white">
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="w-4 h-4 rounded border border-zinc-600 flex-shrink-0"
+                          style={{ backgroundColor: colorToHex(p.color) }}
+                        />
+                        <span className="truncate">{p.name}</span>
+                        <span className="text-zinc-500 text-xs truncate">{colorToHex(p.color)}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 type="button"
                 className="bg-violet-600 hover:bg-violet-700"

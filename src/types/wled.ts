@@ -15,6 +15,12 @@ export type WLEDColor = [number, number, number, number];
  */
 export interface WLEDSegment {
   id?: number;
+  /**
+   * Optional segment name (WLED may expose it as `n` in JSON state).
+   * Our backend may also enrich segments with a `name` field.
+   */
+  name?: string;
+  n?: string;
   start: number;
   stop: number;
   len: number;

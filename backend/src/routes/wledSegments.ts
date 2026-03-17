@@ -46,7 +46,40 @@ wledSegmentsRouter.get("/", async (req: Request, res: Response) => {
       where: { deviceId },
       orderBy: { wledSegmentIndex: "asc" },
     });
-    res.json(segments);
+
+    // Best-effort: pull segment names from device state (if reachable) and
+    // overlay them onto DB segments without mutating the DB.
+    try {
+      const state = await getDeviceState(deviceId);
+      const seg = state.seg ?? [];
+      const deviceNameByIndex = new Map<number, string>();
+
+      for (let i = 0; i < seg.length; i++) {
+        const s = seg[i] as Record<string, unknown>;
+        const idx = (typeof s.id === "number" ? s.id : i) as number;
+        const n = typeof s.n === "string" ? (s.n as string) : typeof s.name === "string" ? (s.name as string) : undefined;
+        if (n && n.trim()) {
+          deviceNameByIndex.set(idx, n.trim());
+        }
+      }
+
+      const enriched = segments.map((dbSeg) => {
+        const deviceName = deviceNameByIndex.get(dbSeg.wledSegmentIndex);
+        if (!deviceName) return dbSeg;
+
+        // Only override the generic default naming pattern.
+        const defaultName = `Segment ${dbSeg.wledSegmentIndex}`;
+        if (dbSeg.name === defaultName) {
+          return { ...dbSeg, name: deviceName };
+        }
+        return dbSeg;
+      });
+
+      return res.json(enriched);
+    } catch {
+      // Device offline/unreachable — fall back to DB segments
+      return res.json(segments);
+    }
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid device ID") {
       return res.status(400).json({ error: error.message });
@@ -63,7 +96,29 @@ wledSegmentsRouter.get("/from-wled", async (req: Request, res: Response) => {
 
     const state = await getDeviceState(deviceId);
     const seg = state.seg ?? [];
-    res.json(seg);
+
+    // Enrich with locally-saved segment names (and any device-provided names)
+    const saved = await prisma.wledSegment.findMany({
+      where: { deviceId },
+      select: { wledSegmentIndex: true, name: true },
+    });
+    const nameByIndex = new Map<number, string>(saved.map((s) => [s.wledSegmentIndex, s.name]));
+
+    const enriched = seg.map((s, i) => {
+      const idx = (s?.id ?? i) as number;
+      const deviceName =
+        typeof (s as Record<string, unknown>)?.n === "string"
+          ? ((s as Record<string, unknown>).n as string)
+          : typeof (s as Record<string, unknown>)?.name === "string"
+            ? ((s as Record<string, unknown>).name as string)
+            : undefined;
+      const savedName = nameByIndex.get(idx);
+      const name = deviceName ?? savedName ?? `Segment ${idx}`;
+
+      return { ...s, wledSegmentIndex: idx, name };
+    });
+
+    res.json(enriched);
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid device ID") {
       return res.status(400).json({ error: error.message });
