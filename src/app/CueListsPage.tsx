@@ -176,7 +176,7 @@ export default function CueListsPage() {
       >
         <SheetContent
           side="right"
-          className="w-[50vw] min-w-[50vw] max-w-[50vw] sm:w-[50vw] sm:min-w-[50vw] sm:max-w-[50vw] bg-zinc-900 border-zinc-800 p-0 flex flex-col"
+          className="w-screen max-w-none sm:max-w-none bg-zinc-900 border-zinc-800 p-0 flex flex-col"
           style={{
             height: "100vh",
             maxHeight: "100vh",

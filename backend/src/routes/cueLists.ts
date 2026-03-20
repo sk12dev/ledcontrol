@@ -3,14 +3,53 @@ import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 import type { Request, Response } from "express";
 import { cueExecutionService } from "../services/cueExecutionService.js";
+import {
+  clearCueListRepeatTimers,
+  scheduleCueRepeats,
+} from "../services/cueListRepeatScheduler.js";
 
 export const cueListsRouter = Router();
+
+type CueListCueRow = {
+  cueId: number;
+  fadeInSeconds: unknown;
+  repeatIntervalSeconds?: unknown;
+  repeatTotalPlays: number | null;
+};
+
+/** Run cue + optional timed repeats until the list moves to another position. */
+function executeCueListPlayback(cueListId: number, item: CueListCueRow): void {
+  try {
+    clearCueListRepeatTimers(cueListId);
+    cueExecutionService.prepareForNextCue();
+    const fadeIn = Number(item.fadeInSeconds ?? 0);
+    const interval = Number(item.repeatIntervalSeconds ?? 0);
+    cueExecutionService
+      .executeCue(item.cueId, {
+        transitionDurationSeconds: fadeIn >= 0 ? fadeIn : undefined,
+      })
+      .catch((error) => {
+        console.error(`Error executing cue ${item.cueId}:`, error);
+      });
+    scheduleCueRepeats(
+      cueListId,
+      item.cueId,
+      fadeIn,
+      interval,
+      item.repeatTotalPlays
+    );
+  } catch (error) {
+    console.error(`Error executing cue ${item.cueId}:`, error);
+  }
+}
 
 const cueListEntrySchema = z.object({
   cueId: z.number().int().positive(),
   fadeInSeconds: z.coerce.number().min(0).optional().default(0),
   fadeOutSeconds: z.coerce.number().min(0).optional().default(0),
   durationSeconds: z.coerce.number().min(0).nullable().optional(),
+  repeatIntervalSeconds: z.coerce.number().min(0).optional().default(0),
+  repeatTotalPlays: z.number().int().min(1).nullable().optional(),
 });
 
 // Validation schemas: accept either cues (with timing) or cueIds (legacy, default timing)
@@ -172,6 +211,8 @@ cueListsRouter.post("/", async (req: Request, res: Response) => {
       fadeInSeconds: 0,
       fadeOutSeconds: 0,
       durationSeconds: null as number | null,
+      repeatIntervalSeconds: 0,
+      repeatTotalPlays: null as number | null,
     }));
 
     const uniqueCueIds = [...new Set(entries.map((e) => e.cueId))];
@@ -280,7 +321,14 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
     }
 
     const cuesUpdate = validatedData.cues ?? (validatedData.cueIds !== undefined
-      ? validatedData.cueIds.map((cueId) => ({ cueId, fadeInSeconds: 0, fadeOutSeconds: 0, durationSeconds: null as number | null }))
+      ? validatedData.cueIds.map((cueId) => ({
+          cueId,
+          fadeInSeconds: 0,
+          fadeOutSeconds: 0,
+          durationSeconds: null as number | null,
+          repeatIntervalSeconds: 0,
+          repeatTotalPlays: null as number | null,
+        }))
       : undefined);
 
     if (cuesUpdate !== undefined) {
@@ -322,6 +370,8 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
             fadeInSeconds: number;
             fadeOutSeconds: number;
             durationSeconds: number | null;
+            repeatIntervalSeconds: number;
+            repeatTotalPlays: number | null;
           }>;
         };
       } = {
@@ -333,6 +383,11 @@ cueListsRouter.put("/:id", async (req: Request, res: Response) => {
             fadeInSeconds: e.fadeInSeconds ?? 0,
             fadeOutSeconds: e.fadeOutSeconds ?? 0,
             durationSeconds: e.durationSeconds ?? null,
+            repeatIntervalSeconds: e.repeatIntervalSeconds ?? 0,
+            repeatTotalPlays:
+              (e.repeatIntervalSeconds ?? 0) > 0
+                ? (e.repeatTotalPlays ?? null)
+                : null,
           })),
         },
       };
@@ -523,19 +578,7 @@ cueListsRouter.post(
       const currentCueListItem = updatedCueList.cueListCues[nextPosition];
 
       if (currentCueListItem) {
-        try {
-          cueExecutionService.prepareForNextCue();
-          const fadeIn = Number(currentCueListItem.fadeInSeconds ?? 0);
-          cueExecutionService
-            .executeCue(currentCueListItem.cueId, {
-              transitionDurationSeconds: fadeIn >= 0 ? fadeIn : undefined,
-            })
-            .catch((error) => {
-              console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
-            });
-        } catch (error) {
-          console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
-        }
+        executeCueListPlayback(id, currentCueListItem);
       }
 
       res.json({
@@ -609,19 +652,7 @@ cueListsRouter.post(
       const currentCueListItem = updatedCueList.cueListCues[prevPosition];
 
       if (currentCueListItem) {
-        try {
-          cueExecutionService.prepareForNextCue();
-          const fadeIn = Number(currentCueListItem.fadeInSeconds ?? 0);
-          cueExecutionService
-            .executeCue(currentCueListItem.cueId, {
-              transitionDurationSeconds: fadeIn >= 0 ? fadeIn : undefined,
-            })
-            .catch((error) => {
-              console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
-            });
-        } catch (error) {
-          console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
-        }
+        executeCueListPlayback(id, currentCueListItem);
       }
 
       res.json({
@@ -705,19 +736,7 @@ cueListsRouter.post("/:id/go-to", async (req: Request, res: Response) => {
       updatedCueList.cueListCues[validatedData.position];
 
     if (currentCueListItem) {
-      try {
-        cueExecutionService.prepareForNextCue();
-        const fadeIn = Number(currentCueListItem.fadeInSeconds ?? 0);
-        cueExecutionService
-          .executeCue(currentCueListItem.cueId, {
-            transitionDurationSeconds: fadeIn >= 0 ? fadeIn : undefined,
-          })
-          .catch((error) => {
-            console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
-          });
-      } catch (error) {
-        console.error(`Error executing cue ${currentCueListItem.cueId}:`, error);
-      }
+      executeCueListPlayback(id, currentCueListItem);
     }
 
     res.json({

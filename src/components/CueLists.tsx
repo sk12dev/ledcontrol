@@ -201,6 +201,25 @@ export function CueLists({ showId, onEdit }: CueListsProps) {
                         const isActive = index === cueList.currentPosition;
                         const cue = cues.find((c) => c.id === cueItem.cueId);
 
+                        const repeatIv = Number(
+                          cueItem.repeatIntervalSeconds ?? 0
+                        );
+                        const timingParts = [
+                          cueItem.fadeInSeconds > 0 &&
+                            `in ${cueItem.fadeInSeconds}s`,
+                          cueItem.fadeOutSeconds > 0 &&
+                            `out ${cueItem.fadeOutSeconds}s`,
+                          cueItem.durationSeconds != null
+                            ? `${cueItem.durationSeconds}s`
+                            : null,
+                          repeatIv > 0 &&
+                            `↻ ${repeatIv}s${
+                              cueItem.repeatTotalPlays != null
+                                ? ` (${cueItem.repeatTotalPlays}×)`
+                                : " (∞)"
+                            }`,
+                        ].filter(Boolean) as string[];
+
                         return (
                           <button
                             key={cueItem.id}
@@ -216,9 +235,9 @@ export function CueLists({ showId, onEdit }: CueListsProps) {
                               <span className="text-xs text-gray-400">
                                 #{index + 1}
                               </span>
-                              {(cueItem.fadeInSeconds > 0 || cueItem.fadeOutSeconds > 0 || cueItem.durationSeconds != null) && (
+                              {timingParts.length > 0 && (
                                 <span className="text-xs text-gray-500">
-                                  {[cueItem.fadeInSeconds > 0 && `in ${cueItem.fadeInSeconds}s`, cueItem.fadeOutSeconds > 0 && `out ${cueItem.fadeOutSeconds}s`, cueItem.durationSeconds != null ? `${cueItem.durationSeconds}s` : "∞"].filter(Boolean).join(" · ")}
+                                  {timingParts.join(" · ")}
                                 </span>
                               )}
                               {isActive && (

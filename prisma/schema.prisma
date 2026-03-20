@@ -301,6 +301,10 @@ model CueListCue {
   fadeInSeconds   Decimal   @default(0) @map("fade_in_seconds") @db.Decimal(10, 2)
   fadeOutSeconds  Decimal   @default(0) @map("fade_out_seconds") @db.Decimal(10, 2)
   durationSeconds Decimal?  @map("duration_seconds") @db.Decimal(10, 2) // null = infinite
+  /// Seconds between consecutive starts of the same cue; 0 = no repeat
+  repeatIntervalSeconds Decimal @default(0) @map("repeat_interval_seconds") @db.Decimal(10, 2)
+  /// Total times to play this cue (including the first). null = infinite when repeat interval > 0
+  repeatTotalPlays Int?     @map("repeat_total_plays")
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp
 
   // Relations

@@ -1154,6 +1154,10 @@ export interface CueListCueItem {
   fadeInSeconds: number;
   fadeOutSeconds: number;
   durationSeconds: number | null;
+  /** Seconds between replay starts; 0 = play once per list step */
+  repeatIntervalSeconds: number;
+  /** Total plays (including first) while on this cue; null = infinite when interval > 0 */
+  repeatTotalPlays: number | null;
   createdAt: string;
   cue: {
     id: number;
@@ -1168,6 +1172,9 @@ export interface CueListEntry {
   fadeInSeconds?: number;
   fadeOutSeconds?: number;
   durationSeconds?: number | null;
+  repeatIntervalSeconds?: number;
+  /** Omit or null with repeat interval > 0 = infinite replays */
+  repeatTotalPlays?: number | null;
 }
 
 /**
