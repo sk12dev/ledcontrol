@@ -48,6 +48,10 @@ const CHANNEL_PURPOSES = [
   "strobe",
   "pan",
   "tilt",
+  "gobo",
+  "color wheel",
+  "fan",
+  "fog",
   "custom",
 ] as const;
 
@@ -63,7 +67,12 @@ export function DmxFixtureModal({
   const [artNetNodeId, setArtNetNodeId] = useState<number | null>(null);
   const [startAddress, setStartAddress] = useState(1);
   const [channelCount, setChannelCount] = useState(4);
-  const [channelPurposes, setChannelPurposes] = useState<string[]>(["red", "green", "blue", "alpha"]);
+  const [channelPurposes, setChannelPurposes] = useState<string[]>([
+    "red",
+    "green",
+    "blue",
+    "alpha",
+  ]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -75,7 +84,9 @@ export function DmxFixtureModal({
         setArtNetNodeId(fixture.artNetNodeId);
         setStartAddress(fixture.startAddress);
         setChannelCount(fixture.channelCount);
-        const purposes = Array.isArray(fixture.channelPurposes) ? [...fixture.channelPurposes] : [];
+        const purposes = Array.isArray(fixture.channelPurposes)
+          ? [...fixture.channelPurposes]
+          : [];
         while (purposes.length < fixture.channelCount) purposes.push("dimmer");
         setChannelPurposes(purposes.slice(0, fixture.channelCount));
       } else {
@@ -96,7 +107,10 @@ export function DmxFixtureModal({
       if (current.length > newCount) {
         setChannelPurposes(current.slice(0, newCount));
       } else if (current.length < newCount) {
-        setChannelPurposes([...current, ...Array(newCount - current.length).fill("dimmer")]);
+        setChannelPurposes([
+          ...current,
+          ...Array(newCount - current.length).fill("dimmer"),
+        ]);
       }
     }
   }, [channelCount, isOpen, fixture]);
@@ -108,7 +122,10 @@ export function DmxFixtureModal({
     if (current.length > newCount) {
       setChannelPurposes(current.slice(0, newCount));
     } else if (current.length < newCount) {
-      setChannelPurposes([...current, ...Array(newCount - current.length).fill("dimmer")]);
+      setChannelPurposes([
+        ...current,
+        ...Array(newCount - current.length).fill("dimmer"),
+      ]);
     }
   };
 
@@ -125,10 +142,13 @@ export function DmxFixtureModal({
     const newErrors: Record<string, string> = {};
     if (!name.trim()) newErrors.name = "Name is required";
     if (!artNetNodeId) newErrors.artNetNodeId = "Select an Art-Net node";
-    if (startAddress < 1 || startAddress > 512) newErrors.startAddress = "Start address must be 1-512";
-    if (channelCount < 1 || channelCount > 512) newErrors.channelCount = "Channel count must be 1-512";
+    if (startAddress < 1 || startAddress > 512)
+      newErrors.startAddress = "Start address must be 1-512";
+    if (channelCount < 1 || channelCount > 512)
+      newErrors.channelCount = "Channel count must be 1-512";
     if (startAddress + channelCount - 1 > 512) {
-      newErrors.startAddress = "Start address + channel count cannot exceed 512";
+      newErrors.startAddress =
+        "Start address + channel count cannot exceed 512";
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -189,7 +209,10 @@ export function DmxFixtureModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && !isLoading && !isDeleting && onClose()}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => !open && !isLoading && !isDeleting && onClose()}
+    >
       <DialogContent className="sm:max-w-[560px] bg-zinc-900 border-zinc-800 max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white">
@@ -201,7 +224,9 @@ export function DmxFixtureModal({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name" className="text-zinc-300">Name *</Label>
+            <Label htmlFor="name" className="text-zinc-300">
+              Name *
+            </Label>
             <Input
               id="name"
               value={name}
@@ -210,7 +235,9 @@ export function DmxFixtureModal({
               placeholder="Fixture Name"
               className="bg-zinc-800 border-zinc-700 text-white"
             />
-            {errors.name && <p className="text-sm text-red-400">{errors.name}</p>}
+            {errors.name && (
+              <p className="text-sm text-red-400">{errors.name}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label className="text-zinc-300">Art-Net Node *</Label>
@@ -230,36 +257,50 @@ export function DmxFixtureModal({
                 ))}
               </SelectContent>
             </Select>
-            {errors.artNetNodeId && <p className="text-sm text-red-400">{errors.artNetNodeId}</p>}
+            {errors.artNetNodeId && (
+              <p className="text-sm text-red-400">{errors.artNetNodeId}</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="startAddress" className="text-zinc-300">Start Address (1-512)</Label>
+              <Label htmlFor="startAddress" className="text-zinc-300">
+                Start Address (1-512)
+              </Label>
               <Input
                 id="startAddress"
                 type="number"
                 min={1}
                 max={512}
                 value={startAddress}
-                onChange={(e) => setStartAddress(parseInt(e.target.value, 10) || 1)}
+                onChange={(e) =>
+                  setStartAddress(parseInt(e.target.value, 10) || 1)
+                }
                 disabled={isLoading || isDeleting}
                 className="bg-zinc-800 border-zinc-700 text-white"
               />
-              {errors.startAddress && <p className="text-sm text-red-400">{errors.startAddress}</p>}
+              {errors.startAddress && (
+                <p className="text-sm text-red-400">{errors.startAddress}</p>
+              )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="channelCount" className="text-zinc-300">Channels</Label>
+              <Label htmlFor="channelCount" className="text-zinc-300">
+                Channels
+              </Label>
               <Input
                 id="channelCount"
                 type="number"
                 min={1}
                 max={512}
                 value={channelCount}
-                onChange={(e) => handleChannelCountChange(parseInt(e.target.value, 10) || 1)}
+                onChange={(e) =>
+                  handleChannelCountChange(parseInt(e.target.value, 10) || 1)
+                }
                 disabled={isLoading || isDeleting}
                 className="bg-zinc-800 border-zinc-700 text-white"
               />
-              {errors.channelCount && <p className="text-sm text-red-400">{errors.channelCount}</p>}
+              {errors.channelCount && (
+                <p className="text-sm text-red-400">{errors.channelCount}</p>
+              )}
             </div>
           </div>
           <div className="space-y-2">
@@ -273,7 +314,9 @@ export function DmxFixtureModal({
                   disabled={isLoading || isDeleting}
                 >
                   <SelectTrigger className="h-8 text-xs bg-zinc-800 border-zinc-700 text-white">
-                    <SelectValue>{i + 1}: {p}</SelectValue>
+                    <SelectValue>
+                      {i + 1}: {p}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {CHANNEL_PURPOSES.map((pr) => (
@@ -287,9 +330,14 @@ export function DmxFixtureModal({
             </div>
           </div>
           {errors.submit && (
-            <Alert variant="destructive" className="bg-red-900/20 border-red-800">
+            <Alert
+              variant="destructive"
+              className="bg-red-900/20 border-red-800"
+            >
               <AlertCircle className="h-4 w-4 text-red-400" />
-              <AlertDescription className="text-red-400">{errors.submit}</AlertDescription>
+              <AlertDescription className="text-red-400">
+                {errors.submit}
+              </AlertDescription>
             </Alert>
           )}
           <DialogFooter className="gap-3">
@@ -305,10 +353,19 @@ export function DmxFixtureModal({
                 {isDeleting ? "Deleting..." : "Delete"}
               </Button>
             )}
-            <Button type="button" variant="outline" onClick={onClose} disabled={isLoading || isDeleting}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isLoading || isDeleting}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading || isDeleting} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <Button
+              type="submit"
+              disabled={isLoading || isDeleting}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
               {isLoading ? "Saving..." : fixture ? "Update" : "Create"}
             </Button>
           </DialogFooter>
