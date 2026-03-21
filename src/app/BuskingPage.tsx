@@ -115,7 +115,7 @@ export default function BuskingPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const liveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveDebounceByUnit = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Patch
   const [patchEntries, setPatchEntries] = useState<BuskingPatchEntry[]>([]);
@@ -343,11 +343,13 @@ export default function BuskingPage() {
       const nextState = { ...current, ...patch };
       setState(unit, patch);
       if (liveMode) {
-        if (liveDebounceRef.current) clearTimeout(liveDebounceRef.current);
-        liveDebounceRef.current = setTimeout(() => {
-          liveDebounceRef.current = null;
+        const existing = liveDebounceByUnit.current.get(key);
+        if (existing) clearTimeout(existing);
+        const t = setTimeout(() => {
+          liveDebounceByUnit.current.delete(key);
           applyLive(unit, nextState);
         }, LIVE_DEBOUNCE_MS);
+        liveDebounceByUnit.current.set(key, t);
       }
     },
     [liveMode, unitStates, setState, applyLive]
@@ -355,7 +357,8 @@ export default function BuskingPage() {
 
   useEffect(() => {
     return () => {
-      if (liveDebounceRef.current) clearTimeout(liveDebounceRef.current);
+      liveDebounceByUnit.current.forEach((t) => clearTimeout(t));
+      liveDebounceByUnit.current.clear();
     };
   }, []);
 
