@@ -1,6 +1,6 @@
 /**
  * ETC EOS-style command parser for busking.
- * Parses: [Fixture ]n [Thru m] at|@ <level> | Full | Off [color <presetName>]
+ * Parses: [Fixture ]n [Thru m] at|@ <level> | Full | On | Off [color <presetName>]
  * Case-insensitive. "Fixture " is optional if line starts with a number.
  * Also accepts "Chan" as alias for "Fixture". "@" is shorthand for "at".
  */
@@ -61,9 +61,10 @@ export function parseBuskingCommand(line: string): ParsedCommand | null {
     }
   }
 
-  // "at <number>", "@ <number>", "full", or "off"
+  // "at <number>", "@ <number>", "full", "on", or "off"
   const atMatch = rest.match(/^\s*(?:at|@)\s*(\d+)\s*$/i);
   const fullMatch = /^\s*full\s*$/i.test(rest);
+  const onMatch = /^\s*on\s*$/i.test(rest);
   const offMatch = /^\s*off\s*$/i.test(rest);
 
   if (atMatch) {
@@ -73,7 +74,7 @@ export function parseBuskingCommand(line: string): ParsedCommand | null {
     }
     return { fixtureNumbers, level: pct, off: false, colorName };
   }
-  if (fullMatch) {
+  if (fullMatch || onMatch) {
     return { fixtureNumbers, level: 100, off: false, colorName };
   }
   if (offMatch) {

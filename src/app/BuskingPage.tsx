@@ -419,7 +419,7 @@ export default function BuskingPage() {
     if (!line) return;
     const parsed = parseBuskingCommand(line);
     if (!parsed) {
-      setCommandMessage("Unknown command. Try: 1 @ 50, 1 Thru 5 Full, 1 Off, 1 @ 50 color Red");
+      setCommandMessage("Unknown command. Try: 1 @ 50, 1 On, 1 Thru 5 Full, 1 Off, 1 @ 50 color Red");
       return;
     }
     if (parsed.error) {
@@ -787,7 +787,7 @@ export default function BuskingPage() {
           <SheetHeader className="border-b border-zinc-800 px-4 py-3 shrink-0">
             <SheetTitle className="text-white text-base">Command line</SheetTitle>
             <p className="text-xs text-zinc-500 mt-1">
-              1 @ 50 | 1 Thru 5 Full | 1 Off | 1 @ 50 color Red
+              1 @ 50 | 1 On | 1 Thru 5 Full | 1 Off | 1 @ 50 color Red
             </p>
           </SheetHeader>
           <div className="p-4 flex flex-col gap-2">

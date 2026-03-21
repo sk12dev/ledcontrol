@@ -27,14 +27,16 @@ const colorArray = z.array(z.number().int().min(0).max(255)).length(4);
 const setFixtureSchema = z.object({
   fixtureId: z.number().int().positive(),
   color: colorArray.optional(),
-  brightness: z.number().int().min(1).max(255).optional(),
+  /** 0 is valid when turning off / busking blackout */
+  brightness: z.number().int().min(0).max(255).optional(),
   turnOff: z.boolean().optional(),
 });
 
 const setDeviceSchema = z.object({
   deviceId: z.number().int().positive(),
   color: colorArray.optional(),
-  brightness: z.number().int().min(1).max(255).optional(),
+  /** 0 is valid when on: false / busking off */
+  brightness: z.number().int().min(0).max(255).optional(),
   on: z.boolean().optional(),
 });
 

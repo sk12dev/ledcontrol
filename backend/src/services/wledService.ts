@@ -190,6 +190,7 @@ export async function applyPresetToDevice(
     preset.color[3],
   ];
   const state: WLEDStateUpdate = {
+    on: true,
     bri: preset.brightness,
     seg: [
       {
@@ -323,6 +324,7 @@ export async function updateDeviceColorAndBrightness(
     color[3],
   ];
   const state: WLEDStateUpdate = {
+    on: true,
     bri: brightness,
     seg: [
       {
