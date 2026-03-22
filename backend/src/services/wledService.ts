@@ -304,6 +304,146 @@ export async function checkDeviceConnection(deviceId: number): Promise<boolean> 
   }
 }
 
+const RGBW_BLACK: [number, number, number, number] = [0, 0, 0, 0];
+
+type WledColorTriple = [
+  [number, number, number, number],
+  [number, number, number, number],
+  [number, number, number, number],
+];
+
+function tripleColor(c: [number, number, number, number]): WledColorTriple {
+  return [
+    c,
+    RGBW_BLACK,
+    RGBW_BLACK,
+  ];
+}
+
+/** Segment ids from live state (WLED `seg[].id`, fallback to array index). */
+export function resolveSegmentIdsFromState(state: WLEDState | null | undefined): number[] {
+  const seg = state?.seg;
+  if (!seg || seg.length === 0) return [0];
+  return seg.map((s, i) => (typeof s.id === "number" ? s.id : i));
+}
+
+/**
+ * Solid color for all segments, or only listed segments lit (others black).
+ * @param targetSegmentIds - null = whole device (same color on every segment); else WLED segment ids
+ */
+export function buildSolidColorSegUpdates(
+  segmentIds: number[],
+  targetSegmentIds: number[] | null,
+  color: [number, number, number, number]
+): Array<{ id: number; fx: number; col: WledColorTriple }> {
+  if (targetSegmentIds === null) {
+    return segmentIds.map((id) => ({ id, fx: 0, col: tripleColor(color) }));
+  }
+  const targetSet = new Set(targetSegmentIds);
+  return segmentIds.map((id) => ({
+    id,
+    fx: 0,
+    col: tripleColor(targetSet.has(id) ? color : RGBW_BLACK),
+  }));
+}
+
+/** Per-segment RGBW (e.g. crossfade with different starts per segment). */
+export function buildSolidColorSegUpdatesFromMap(
+  segmentIds: number[],
+  colorBySegmentId: Map<number, [number, number, number, number]>
+): Array<{ id: number; fx: number; col: WledColorTriple }> {
+  return segmentIds.map((id) => ({
+    id,
+    fx: 0,
+    col: tripleColor(colorBySegmentId.get(id) ?? RGBW_BLACK),
+  }));
+}
+
+/** Effect on all segments, or only listed segments (others solid black). */
+export function buildEffectSegUpdates(
+  segmentIds: number[],
+  targetSegmentIds: number[] | null,
+  primaryColor: [number, number, number, number],
+  effect: { fx: number; sx: number; ix: number; pal: number }
+): Array<{
+  id: number;
+  fx: number;
+  sx?: number;
+  ix?: number;
+  pal?: number;
+  col: WledColorTriple;
+}> {
+  const colTriple = tripleColor(primaryColor);
+  if (targetSegmentIds === null) {
+    return segmentIds.map((id) => ({
+      id,
+      fx: effect.fx,
+      sx: effect.sx,
+      ix: effect.ix,
+      pal: effect.pal,
+      col: colTriple,
+    }));
+  }
+  const targetSet = new Set(targetSegmentIds);
+  return segmentIds.map((id) =>
+    targetSet.has(id)
+      ? {
+          id,
+          fx: effect.fx,
+          sx: effect.sx,
+          ix: effect.ix,
+          pal: effect.pal,
+          col: colTriple,
+        }
+      : { id, fx: 0, col: tripleColor(RGBW_BLACK) }
+  );
+}
+
+/**
+ * Apply solid color with optional per-segment isolation (used by cue execution).
+ */
+export async function updateDeviceSolidColor(
+  deviceId: number,
+  color: [number, number, number, number],
+  brightness: number,
+  transition: number | undefined,
+  segmentIds: number[],
+  targetSegmentIds: number[] | null
+): Promise<WLEDState> {
+  const seg = buildSolidColorSegUpdates(segmentIds, targetSegmentIds, color);
+  const state: WLEDStateUpdate = {
+    on: true,
+    bri: brightness,
+    seg,
+  };
+  if (transition !== undefined) {
+    state.transition = transition;
+  }
+  return updateDeviceState(deviceId, state);
+}
+
+/**
+ * Full strip update with a possibly different RGBW per segment (merged multi-target transitions).
+ */
+export async function updateDeviceSolidColorsPerSegment(
+  deviceId: number,
+  colorBySegmentId: Map<number, [number, number, number, number]>,
+  brightness: number,
+  transition: number | undefined,
+  segmentIds: number[]
+): Promise<WLEDState> {
+  const seg = buildSolidColorSegUpdatesFromMap(segmentIds, colorBySegmentId);
+  const state: WLEDStateUpdate = {
+    on: true,
+    bri: brightness,
+    seg,
+  };
+  if (transition !== undefined) {
+    state.transition = transition;
+  }
+  return updateDeviceState(deviceId, state);
+}
+
 /**
  * Updates device state with specific color and brightness values.
  * Explicitly sets fx: 0 (Solid) so any previous effect is cleared.

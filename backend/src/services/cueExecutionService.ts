@@ -5,9 +5,10 @@
 
 import { prisma } from "../lib/prisma.js";
 import {
-  updateDeviceColorAndBrightness,
+  updateDeviceSolidColorsPerSegment,
   updateDeviceState,
   getDeviceState,
+  resolveSegmentIdsFromState,
 } from "./wledService.js";
 import { sendFixtureDmx, buildFixtureChannelValues } from "./artnetService.js";
 
@@ -16,10 +17,10 @@ export interface ExecuteCueOptions {
   transitionDurationSeconds?: number;
 }
 
-/** Device target: deviceId + optional segment index (0 = whole device) */
+/** Device target: deviceId + optional WLED segment index (null = whole device / all segments) */
 interface DeviceTarget {
   deviceId: number;
-  segmentIndex: number;
+  segmentIndex: number | null;
 }
 
 interface CueStepWithTargets {
@@ -37,6 +38,12 @@ interface CueStepWithTargets {
   wledPaletteId: number | null;
   deviceTargets: DeviceTarget[];
   fixtures: number[];
+}
+
+/** One device row paired with its cue step (for per-row color across merged cue steps). */
+interface DeviceTargetWithStep {
+  segmentIndex: number | null;
+  step: CueStepWithTargets;
 }
 
 interface ExecutionStatus {
@@ -58,8 +65,6 @@ class CueExecutionService {
 
   private activeTimeouts: Set<NodeJS.Timeout> = new Set();
   private activeIntervals: Set<NodeJS.Timeout> = new Set();
-  /** Key: "deviceId:segmentIndex" for per-segment transitions */
-  private transitionFrames: Map<string, NodeJS.Timeout> = new Map();
   private fixtureTransitionFrames: Map<number, NodeJS.Timeout> = new Map(); // fixtureId -> interval
   /** Last-sent state per fixture for crossfade (avoid starting from black). */
   private fixtureLastState: Map<number, { color: number[]; brightness: number }> = new Map();
@@ -135,7 +140,8 @@ class CueExecutionService {
       wledPaletteId: step.wledPaletteId ?? null,
       deviceTargets: step.cueStepDevices.map((csd) => ({
         deviceId: csd.deviceId,
-        segmentIndex: csd.wledSegment?.wledSegmentIndex ?? 0,
+        segmentIndex:
+          csd.wledSegment != null ? csd.wledSegment.wledSegmentIndex : null,
       })),
       fixtures: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
     }));
@@ -150,10 +156,21 @@ class CueExecutionService {
 
     try {
       console.log(`[ExecutionService] Applying snapshot for cue ${cueId} over ${transitionDurationSeconds}s`);
-      const devicePromises = steps.flatMap((step) =>
-        step.deviceTargets.map((t) =>
-          this.executeDeviceTransition(step, t.deviceId, transitionDurationSeconds, t.segmentIndex)
-        )
+      const deviceTargetsByDevice = new Map<number, DeviceTargetWithStep[]>();
+      for (const step of steps) {
+        for (const t of step.deviceTargets) {
+          const list = deviceTargetsByDevice.get(t.deviceId) ?? [];
+          list.push({ segmentIndex: t.segmentIndex, step });
+          deviceTargetsByDevice.set(t.deviceId, list);
+        }
+      }
+      const devicePromises = Array.from(deviceTargetsByDevice.entries()).map(
+        ([deviceId, mergedWithSteps]) =>
+          this.executeDeviceTransition(
+            deviceId,
+            transitionDurationSeconds,
+            mergedWithSteps
+          )
       );
       const fixturePromises = steps.flatMap((step) =>
         step.fixtures.map((fixtureId) =>
@@ -182,23 +199,27 @@ class CueExecutionService {
   }
 
   /**
-   * Execute a transition for a WLED device (or a specific segment). Always uses current live state as start (crossfade).
-   * @param segmentIndex - 0 = whole device / first segment; otherwise WLED segment id
+   * One transition per device for the whole cue. `mergedWithSteps` is ordered by cue step order;
+   * later rows override earlier ones for the same segment / whole-device row.
    */
   private async executeDeviceTransition(
-    step: CueStepWithTargets,
     deviceId: number,
     transitionDurationSeconds: number,
-    segmentIndex: number = 0
+    mergedWithSteps: DeviceTargetWithStep[]
   ): Promise<void> {
-    const frameKey = `${deviceId}:${segmentIndex}`;
-    const existing = this.transitionFrames.get(frameKey);
-    if (existing) {
-      clearInterval(existing);
-      this.transitionFrames.delete(frameKey);
+    if (mergedWithSteps.length === 0) return;
+
+    let wholeStep: CueStepWithTargets | null = null;
+    const segmentStepById = new Map<number, CueStepWithTargets>();
+    for (const { segmentIndex, step } of mergedWithSteps) {
+      if (segmentIndex === null) {
+        wholeStep = step;
+      } else {
+        segmentStepById.set(segmentIndex, step);
+      }
     }
 
-    if (step.turnOff) {
+    if (segmentStepById.size === 0 && wholeStep?.turnOff) {
       try {
         await updateDeviceState(deviceId, {
           on: false,
@@ -210,29 +231,140 @@ class CueExecutionService {
       return;
     }
 
-    if (step.useWledEffect && step.wledEffectId != null) {
-      const primaryColor: [number, number, number, number] =
-        step.targetColor && step.targetColor.length >= 4
-          ? [step.targetColor[0], step.targetColor[1], step.targetColor[2], step.targetColor[3] ?? 0]
-          : [255, 255, 255, 0];
-      const segmentUpdate = {
-        id: segmentIndex,
-        fx: step.wledEffectId,
-        sx: step.wledEffectSpeed ?? 128,
-        ix: step.wledEffectIntensity ?? 128,
-        pal: step.wledPaletteId ?? 0,
-        col: [
-          primaryColor,
-          [0, 0, 0, 0] as [number, number, number, number],
-          [0, 0, 0, 0] as [number, number, number, number],
-        ] as [[number, number, number, number], [number, number, number, number], [number, number, number, number]],
-      };
+    const targetStepForSegment = (
+      segmentId: number
+    ): CueStepWithTargets | null => {
+      if (segmentStepById.has(segmentId)) {
+        return segmentStepById.get(segmentId)!;
+      }
+      return wholeStep;
+    };
+
+    let segmentIds: number[] = [0];
+    const startColorBySegmentId = new Map<number, number[]>();
+    let startBrightness = 128;
+    try {
+      const currentState = await getDeviceState(deviceId);
+      segmentIds = resolveSegmentIdsFromState(currentState);
+      const seg = currentState.seg;
+      const pad4 = (c: number[]) =>
+        [c[0] ?? 0, c[1] ?? 0, c[2] ?? 0, c[3] ?? 0] as number[];
+      for (const id of segmentIds) {
+        const segmentState = seg?.find((s, i) => (s.id ?? i) === id);
+        const c =
+          segmentState?.col && Array.isArray(segmentState.col[0])
+            ? (segmentState.col[0] as number[])
+            : [0, 0, 0, 0];
+        startColorBySegmentId.set(id, pad4(c));
+      }
+      startBrightness = currentState.bri;
+    } catch (error) {
+      console.error(`Failed to get current state for device ${deviceId}:`, error);
+      startBrightness = 10;
+    }
+
+    const rgbwTargetFromStep = (
+      step: CueStepWithTargets,
+      fallbackRgbw: number[]
+    ): [number, number, number, number] => {
+      if (step.targetColor && step.targetColor.length >= 4) {
+        return [
+          step.targetColor[0],
+          step.targetColor[1],
+          step.targetColor[2],
+          step.targetColor[3] ?? 0,
+        ];
+      }
+      return [
+        fallbackRgbw[0] ?? 0,
+        fallbackRgbw[1] ?? 0,
+        fallbackRgbw[2] ?? 0,
+        fallbackRgbw[3] ?? 0,
+      ];
+    };
+
+    const maxTargetBrightness = (): number => {
+      let m = startBrightness;
+      for (const id of segmentIds) {
+        const st = targetStepForSegment(id);
+        if (st?.targetBrightness != null) {
+          m = Math.max(m, st.targetBrightness);
+        }
+      }
+      return Math.max(m, 1);
+    };
+
+    const anySegmentUsesEffect = (): boolean => {
+      for (const id of segmentIds) {
+        const st = targetStepForSegment(id);
+        if (
+          st &&
+          !st.turnOff &&
+          st.useWledEffect &&
+          st.wledEffectId != null
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    if (anySegmentUsesEffect()) {
+      const bri = maxTargetBrightness();
+      const blackTriple: [
+        [number, number, number, number],
+        [number, number, number, number],
+        [number, number, number, number],
+      ] = [
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+      ];
+      const segPayload = segmentIds.map((id) => {
+        const st = targetStepForSegment(id);
+        if (!st || st.turnOff) {
+          return { id, fx: 0, col: blackTriple };
+        }
+        const sc = startColorBySegmentId.get(id) ?? [0, 0, 0, 0];
+        const primaryColor = rgbwTargetFromStep(st, sc);
+        if (st.useWledEffect && st.wledEffectId != null) {
+          return {
+            id,
+            fx: st.wledEffectId,
+            sx: st.wledEffectSpeed ?? 128,
+            ix: st.wledEffectIntensity ?? 128,
+            pal: st.wledPaletteId ?? 0,
+            col: [
+              primaryColor,
+              [0, 0, 0, 0] as [number, number, number, number],
+              [0, 0, 0, 0] as [number, number, number, number],
+            ] as [
+              [number, number, number, number],
+              [number, number, number, number],
+              [number, number, number, number],
+            ],
+          };
+        }
+        return {
+          id,
+          fx: 0,
+          col: [
+            primaryColor,
+            [0, 0, 0, 0] as [number, number, number, number],
+            [0, 0, 0, 0] as [number, number, number, number],
+          ] as [
+            [number, number, number, number],
+            [number, number, number, number],
+            [number, number, number, number],
+          ],
+        };
+      });
       try {
         await updateDeviceState(deviceId, {
           on: true,
-          bri: step.targetBrightness ?? 255,
+          bri,
           transition: Math.round(transitionDurationSeconds * 10),
-          seg: [segmentUpdate],
+          seg: segPayload,
         });
       } catch (error) {
         console.error(`Failed to set effect on device ${deviceId}:`, error);
@@ -240,61 +372,39 @@ class CueExecutionService {
       return;
     }
 
-    // Crossfade: always use current device state as start (per-segment when targeting a segment)
-    let startColor: number[] = [0, 0, 0, 0];
-    let startBrightness = 128;
-    try {
-      const currentState = await getDeviceState(deviceId);
-      const seg = currentState.seg;
-      const segmentState = seg && segmentIndex < seg.length ? seg[segmentIndex] : seg?.[0];
-      if (segmentState?.col && Array.isArray(segmentState.col[0])) {
-        startColor = segmentState.col[0] as number[];
+    const targetBrightness = maxTargetBrightness();
+    const transitionDeciseconds = Math.round(transitionDurationSeconds * 10);
+
+    const colorBySeg = new Map<number, [number, number, number, number]>();
+    for (const id of segmentIds) {
+      const st = targetStepForSegment(id);
+      if (!st || st.turnOff) {
+        colorBySeg.set(id, [0, 0, 0, 0]);
+        continue;
       }
-      startBrightness = currentState.bri;
-    } catch (error) {
-      console.error(`Failed to get current state for device ${deviceId}:`, error);
-      startColor = [1, 1, 1, 0];
-      startBrightness = 10;
+      const sc = startColorBySegmentId.get(id) ?? [0, 0, 0, 0];
+      const hasExplicit = st.targetColor != null && st.targetColor.length >= 4;
+      const finalColor: [number, number, number, number] = hasExplicit
+        ? rgbwTargetFromStep(st, sc)
+        : ([
+            sc[0] ?? 0,
+            sc[1] ?? 0,
+            sc[2] ?? 0,
+            sc[3] ?? 0,
+          ] as [number, number, number, number]);
+      colorBySeg.set(id, finalColor);
     }
-
-    const targetColor = step.targetColor && step.targetColor.length >= 4
-      ? step.targetColor
-      : startColor;
-    const targetBrightness = step.targetBrightness ?? startBrightness;
-
-    const durationMs = transitionDurationSeconds * 1000;
-    const numFrames = Math.ceil(durationMs / this.FRAME_INTERVAL);
-    let currentFrame = 0;
-
-    const interval = setInterval(async () => {
-      currentFrame += 1;
-      const progress = Math.min(currentFrame / numFrames, 1.0);
-
-      const currentColor: [number, number, number, number] = [
-        Math.round(startColor[0] + (targetColor[0] - startColor[0]) * progress),
-        Math.round(startColor[1] + (targetColor[1] - startColor[1]) * progress),
-        Math.round(startColor[2] + (targetColor[2] - startColor[2]) * progress),
-        Math.round(startColor[3] + (targetColor[3] - startColor[3]) * progress),
-      ];
-      const currentBrightness = Math.round(
-        startBrightness + (targetBrightness - startBrightness) * progress
+    try {
+      await updateDeviceSolidColorsPerSegment(
+        deviceId,
+        colorBySeg,
+        targetBrightness,
+        transitionDeciseconds,
+        segmentIds
       );
-
-      try {
-        await updateDeviceColorAndBrightness(deviceId, currentColor, currentBrightness, 0, segmentIndex);
-      } catch (error) {
-        console.error(`Failed to update device ${deviceId} during transition:`, error);
-      }
-
-      if (progress >= 1.0) {
-        clearInterval(interval);
-        this.transitionFrames.delete(frameKey);
-        this.activeIntervals.delete(interval);
-      }
-    }, this.FRAME_INTERVAL);
-
-    this.activeIntervals.add(interval);
-    this.transitionFrames.set(frameKey, interval as unknown as NodeJS.Timeout);
+    } catch (error) {
+      console.error(`Failed to update device ${deviceId}:`, error);
+    }
   }
 
   /**
@@ -403,7 +513,6 @@ class CueExecutionService {
     // Clear all intervals (transitions)
     this.activeIntervals.forEach((interval) => clearInterval(interval));
     this.activeIntervals.clear();
-    this.transitionFrames.clear();
     this.fixtureTransitionFrames.clear();
 
     // Reset execution status
