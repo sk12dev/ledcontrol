@@ -1,6 +1,7 @@
 /**
  * ETC EOS-style command parser for busking.
- * Parses: [Fixture ]n [Thru m] at|@ <level> | Full | On | Off [color <presetName>]
+ * Parses: [Fixture ]n [Thru m | -m | ,a,b,c] at|@ <level> | Full | On | Off [color <presetName>]
+ * Ranges: "1 Thru 10" or "1-10". Lists: "1,2,5,6".
  * Case-insensitive. "Fixture " is optional if line starts with a number.
  * Also accepts "Chan" as alias for "Fixture". "@" is shorthand for "at".
  */
@@ -11,6 +12,90 @@ export interface ParsedCommand {
   off: boolean;
   colorName?: string | null;
   error?: string;
+}
+
+function dedupeOrdered(nums: number[]): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const n of nums) {
+    if (!seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  }
+  return out;
+}
+
+function expandRange(first: number, last: number): number[] {
+  const fixtureNumbers: number[] = [];
+  for (let i = first; i <= last; i++) fixtureNumbers.push(i);
+  return fixtureNumbers;
+}
+
+/**
+ * Parse fixture list after "Fixture " / "Chan ". Returns consumed rest of line after fixture spec.
+ */
+function parseFixtureSpec(rest: string): { fixtureNumbers: number[]; rest: string } | { error: string } {
+  // 1. Comma-separated list (requires at least one comma)
+  const commaMatch = rest.match(/^(\d+(?:\s*,\s*\d+)+)/);
+  if (commaMatch) {
+    const raw = commaMatch[1] ?? "";
+    const parts = raw.split(/\s*,\s*/);
+    const nums: number[] = [];
+    for (const p of parts) {
+      const n = parseInt(p, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        return { error: "Fixture numbers must be positive integers" };
+      }
+      nums.push(n);
+    }
+    return { fixtureNumbers: dedupeOrdered(nums), rest: rest.slice(commaMatch[0].length).trim() };
+  }
+
+  // 2. "Thru" range
+  const thruMatch = rest.match(/^(\d+)\s+thru\s+(\d+)/i);
+  if (thruMatch) {
+    const firstNum = parseInt(thruMatch[1] ?? "0", 10);
+    const lastNum = parseInt(thruMatch[2] ?? "0", 10);
+    if (firstNum < 1) {
+      return { error: "Fixture numbers must be positive integers" };
+    }
+    if (lastNum < firstNum) {
+      return { error: "Thru number must be >= first fixture" };
+    }
+    return {
+      fixtureNumbers: expandRange(firstNum, lastNum),
+      rest: rest.slice(thruMatch[0].length).trim(),
+    };
+  }
+
+  // 3. Hyphen range (e.g. 1-10)
+  const hyphenMatch = rest.match(/^(\d+)\s*-\s*(\d+)/);
+  if (hyphenMatch) {
+    const firstNum = parseInt(hyphenMatch[1] ?? "0", 10);
+    const lastNum = parseInt(hyphenMatch[2] ?? "0", 10);
+    if (firstNum < 1) {
+      return { error: "Fixture numbers must be positive integers" };
+    }
+    if (lastNum < firstNum) {
+      return { error: "Range end must be >= first fixture" };
+    }
+    return {
+      fixtureNumbers: expandRange(firstNum, lastNum),
+      rest: rest.slice(hyphenMatch[0].length).trim(),
+    };
+  }
+
+  // 4. Single fixture number
+  const singleMatch = rest.match(/^(\d+)/);
+  if (!singleMatch) {
+    return { error: "Expected fixture number(s) after Fixture/Chan" };
+  }
+  const n = parseInt(singleMatch[1] ?? "0", 10);
+  if (n < 1) {
+    return { error: "Fixture numbers must be positive integers" };
+  }
+  return { fixtureNumbers: [n], rest: rest.slice(singleMatch[0].length).trim() };
 }
 
 /**
@@ -26,29 +111,16 @@ export function parseBuskingCommand(line: string): ParsedCommand | null {
     trimmed = "Fixture " + trimmed;
   }
 
-  const lower = trimmed.toLowerCase();
+  const fixtureKeywordMatch = trimmed.match(/^(?:fixture|chan)\s+/i);
+  if (!fixtureKeywordMatch) return null;
 
-  // Match "fixture" or "chan" followed by number
-  const fixtureMatch = lower.match(/^(?:fixture|chan)\s+(\d+)/);
-  if (!fixtureMatch) return null;
-
-  const firstNum = parseInt(fixtureMatch[1], 10);
-  if (firstNum < 1) return null;
-
-  let fixtureNumbers: number[] = [firstNum];
-  let rest = trimmed.slice(fixtureMatch[0].length).trim();
-
-  // Optional "Thru n"
-  const thruMatch = rest.match(/^\s*thru\s+(\d+)/i);
-  if (thruMatch) {
-    const lastNum = parseInt(thruMatch[1], 10);
-    if (lastNum < firstNum) {
-      return { fixtureNumbers: [], off: false, level: null, error: "Thru number must be >= first fixture" };
-    }
-    fixtureNumbers = [];
-    for (let i = firstNum; i <= lastNum; i++) fixtureNumbers.push(i);
-    rest = rest.slice(thruMatch[0].length).trim();
+  let rest = trimmed.slice(fixtureKeywordMatch[0].length).trim();
+  const spec = parseFixtureSpec(rest);
+  if ("error" in spec) {
+    return { fixtureNumbers: [], off: false, level: null, error: spec.error };
   }
+  const { fixtureNumbers } = spec;
+  rest = spec.rest;
 
   // Optional "color <name>" suffix (name may contain spaces)
   let colorName: string | null = null;
