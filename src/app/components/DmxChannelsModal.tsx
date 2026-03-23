@@ -76,6 +76,8 @@ interface DmxChannelsModalProps {
   liveMode: boolean;
   /** When set (e.g. cue builder), primary action stores values on the cue instead of only live output */
   onApplyToCue?: (channels: number[]) => void;
+  /** Called when the dialog closes with the latest channel values (e.g. busking → save full DMX in cues). Skipped when onApplyToCue is set (cancel must not overwrite). */
+  onChannelsCommit?: (channels: number[]) => void;
 }
 
 export function DmxChannelsModal({
@@ -85,6 +87,7 @@ export function DmxChannelsModal({
   onClose,
   liveMode,
   onApplyToCue,
+  onChannelsCommit,
 }: DmxChannelsModalProps) {
   const [channels, setChannels] = useState<number[]>(() => [...initialChannels]);
   const liveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -156,8 +159,15 @@ export function DmxChannelsModal({
     [setChannel]
   );
 
+  const finishClose = useCallback(() => {
+    if (!onApplyToCue && onChannelsCommit) {
+      onChannelsCommit(channelsRef.current);
+    }
+    onClose();
+  }, [onApplyToCue, onChannelsCommit, onClose]);
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && finishClose()}>
       <DialogContent className="sm:max-w-[90vw] max-h-[85vh] bg-zinc-900 border-zinc-800 flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-white">DMX Channels — {fixture.name}</DialogTitle>
@@ -221,7 +231,7 @@ export function DmxChannelsModal({
             </>
           ) : (
             <>
-              <Button variant="outline" className="border-zinc-700" onClick={onClose}>
+              <Button variant="outline" className="border-zinc-700" onClick={finishClose}>
                 Close
               </Button>
               <Button

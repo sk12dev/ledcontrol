@@ -122,6 +122,8 @@ export default function BuskingPage() {
   const [patchSectionOpen, setPatchSectionOpen] = useState(false);
   const [patchDraft, setPatchDraft] = useState<BuskingPatchEntryInput[]>([]);
   const [patchDraftDirty, setPatchDraftDirty] = useState(false);
+  /** Full DMX per fixture after Channels modal closes (moving heads, etc.). Cleared when color/brightness/on changes on tile. */
+  const [fixtureRawChannels, setFixtureRawChannels] = useState<Record<number, number[]>>({});
 
   // Command bar (fixed at bottom)
   const [commandLine, setCommandLine] = useState("");
@@ -253,6 +255,24 @@ export default function BuskingPage() {
     fetchPatch();
   }, [fetchPatch]);
 
+  useEffect(() => {
+    const allowed = new Set(
+      patchEntries.map((e) => e.dmxFixtureId).filter((x): x is number => x != null)
+    );
+    setFixtureRawChannels((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of Object.keys(next)) {
+        const n = Number(id);
+        if (!allowed.has(n)) {
+          delete next[n];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [patchEntries]);
+
   const savePatch = useCallback(async () => {
     const valid = patchDraft.filter((e) => e.deviceId != null || e.dmxFixtureId != null);
     if (valid.some((e) => (e.deviceId != null ? 1 : 0) + (e.dmxFixtureId != null ? 1 : 0) !== 1)) return;
@@ -335,6 +355,17 @@ export default function BuskingPage() {
 
   const updateUnitState = useCallback(
     (unit: Unit, patch: Partial<UnitState>) => {
+      if (
+        unit.type === "fixture" &&
+        (patch.color != null || patch.brightness !== undefined || patch.on !== undefined)
+      ) {
+        setFixtureRawChannels((prev) => {
+          if (prev[unit.id] == null) return prev;
+          const next = { ...prev };
+          delete next[unit.id];
+          return next;
+        });
+      }
       const key = unitKey(unit);
       const current = unitStates[key] ?? DEFAULT_STATE;
       const nextState = { ...current, ...patch };
@@ -376,29 +407,36 @@ export default function BuskingPage() {
       let order = 0;
       for (const unit of patchedUnitsOrdered) {
         const state = getState(unit);
-        const turnOff = !state.on;
-        const targetBrightness =
-          turnOff ? null : Math.max(1, state.brightness);
+        if (!state.on) continue;
+        const targetBrightness = Math.max(1, state.brightness);
         if (unit.type === "device") {
           steps.push({
             order: order++,
             deviceIds: [unit.id],
             targetColor: state.color,
             targetBrightness,
-            turnOff,
+            turnOff: false,
           });
         } else {
+          const fx = fixtures.find((f) => f.id === unit.id);
+          const raw = fixtureRawChannels[unit.id];
+          const useRaw = fx && raw && raw.length === fx.channelCount;
           steps.push({
             order: order++,
             fixtureIds: [unit.id],
             targetColor: state.color,
             targetBrightness,
-            turnOff,
+            turnOff: false,
+            ...(useRaw
+              ? {
+                  fixtureDmx: [{ fixtureId: unit.id, values: [...raw!] }],
+                }
+              : {}),
           });
         }
       }
       if (steps.length === 0) {
-        setSaveError("Patch at least one fixture to save as cue");
+        setSaveError("Turn on at least one patched device or fixture to include in this cue.");
         setSaving(false);
         return;
       }
@@ -415,7 +453,7 @@ export default function BuskingPage() {
     } finally {
       setSaving(false);
     }
-  }, [patchedUnitsOrdered, getState, cueName, selectedShowId]);
+  }, [patchedUnitsOrdered, getState, cueName, selectedShowId, fixtures, fixtureRawChannels]);
 
   const handleCommandSubmit = useCallback(() => {
     const line = commandLine.trim();
@@ -698,6 +736,18 @@ export default function BuskingPage() {
               state={getState(unit)}
               onUpdate={(patch) => updateUnitState(unit, patch)}
               liveMode={liveMode}
+              fixtureChannelSnapshot={
+                unit.type === "fixture" ? fixtureRawChannels[unit.id] : undefined
+              }
+              onFixtureChannelsCommit={
+                unit.type === "fixture"
+                  ? (channels) =>
+                      setFixtureRawChannels((prev) => ({
+                        ...prev,
+                        [unit.id]: channels,
+                      }))
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -861,6 +911,8 @@ function BuskingTile({
   state,
   onUpdate,
   liveMode,
+  fixtureChannelSnapshot,
+  onFixtureChannelsCommit,
 }: {
   unit: Unit;
   fixture: DmxFixture | null;
@@ -868,6 +920,9 @@ function BuskingTile({
   state: UnitState;
   onUpdate: (patch: Partial<UnitState>) => void;
   liveMode: boolean;
+  /** Latest full DMX from Channels modal (for reopen + cue save) */
+  fixtureChannelSnapshot?: number[];
+  onFixtureChannelsCommit?: (channels: number[]) => void;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [r, g, b] = state.color;
@@ -887,7 +942,13 @@ function BuskingTile({
     );
   }, [fixture, state.color, state.brightness, state.on]);
 
-  const initialChannels = fixture && advancedOpen ? getInitialChannels() : [];
+  const initialChannelsForModal = useMemo(() => {
+    if (!fixture) return [];
+    if (fixtureChannelSnapshot && fixtureChannelSnapshot.length === fixture.channelCount) {
+      return fixtureChannelSnapshot;
+    }
+    return getInitialChannels();
+  }, [fixture, fixtureChannelSnapshot, getInitialChannels]);
 
   return (
     <div className="flex-shrink-0 w-[200px] bg-zinc-900/80 border border-zinc-800 rounded-lg p-4 flex flex-col gap-3 hover:border-zinc-700 transition-colors">
@@ -951,10 +1012,11 @@ function BuskingTile({
       {fixture && (
         <DmxChannelsModal
           fixture={fixture}
-          initialChannels={initialChannels}
+          initialChannels={initialChannelsForModal}
           isOpen={advancedOpen}
           onClose={() => setAdvancedOpen(false)}
           liveMode={liveMode}
+          onChannelsCommit={onFixtureChannelsCommit}
         />
       )}
     </div>
