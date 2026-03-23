@@ -27,12 +27,27 @@ const stepSchemaBase = z.object({
   deviceIds: z.array(z.number().int().positive()).default([]),
   segmentTargets: z.array(z.number().int().positive()).default([]),
   fixtureIds: z.array(z.number().int().positive()).default([]),
+  /** Per-fixture raw DMX (length must match fixture channel count). Omitted fixtures use color/brightness. */
+  fixtureDmx: z
+    .array(
+      z.object({
+        fixtureId: z.number().int().positive(),
+        values: z.array(z.number().int().min(0).max(255)),
+      })
+    )
+    .optional()
+    .default([]),
 });
 
 const stepRefine = (step: z.infer<typeof stepSchemaBase>) => {
   if (step.turnOff) return true;
   if (step.useWledEffect) return step.wledEffectId != null;
-  return step.targetColor != null || step.targetBrightness != null;
+  const hasFixtureDmx = (step.fixtureDmx?.length ?? 0) > 0;
+  return (
+    step.targetColor != null ||
+    step.targetBrightness != null ||
+    hasFixtureDmx
+  );
 };
 
 const deviceFixtureRefine = (step: z.infer<typeof stepSchemaBase>) =>
@@ -72,6 +87,44 @@ const updateCueSchema = z.object({
   userId: z.number().int().positive().optional(),
   steps: z.array(updateStepSchema).min(1).optional(),
 });
+
+/** Validates fixtureDmx lengths and that each entry references a fixture in fixtureIds. */
+async function validateFixtureDmxForSteps(
+  steps: Array<{ fixtureIds: number[]; fixtureDmx?: Array<{ fixtureId: number; values: number[] }> }>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const rows: Array<{ fixtureId: number; values: number[] }> = [];
+  for (const step of steps) {
+    for (const row of step.fixtureDmx ?? []) {
+      rows.push(row);
+      if (!(step.fixtureIds ?? []).includes(row.fixtureId)) {
+        return {
+          ok: false,
+          error: `fixtureDmx entry fixture ${row.fixtureId} must also be listed in fixtureIds for that step`,
+        };
+      }
+    }
+  }
+  if (rows.length === 0) return { ok: true };
+  const ids = [...new Set(rows.map((r) => r.fixtureId))];
+  const fixtures = await prisma.dmxFixture.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, channelCount: true },
+  });
+  if (fixtures.length !== ids.length) {
+    return { ok: false, error: "One or more fixtureDmx fixture IDs not found" };
+  }
+  const countById = new Map(fixtures.map((f) => [f.id, f.channelCount]));
+  for (const row of rows) {
+    const cc = countById.get(row.fixtureId)!;
+    if (row.values.length !== cc) {
+      return {
+        ok: false,
+        error: `fixture ${row.fixtureId} DMX snapshot must have exactly ${cc} values (got ${row.values.length})`,
+      };
+    }
+  }
+  return { ok: true };
+}
 
 async function buildCueStepDevicesCreate(
   stepDeviceIds: number[],
@@ -288,6 +341,11 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
       }
     }
 
+    const fixtureDmxCheck = await validateFixtureDmxForSteps(validatedData.steps);
+    if (!fixtureDmxCheck.ok) {
+      return res.status(400).json({ error: fixtureDmxCheck.error });
+    }
+
     // Create cue with steps and device/segment assignments
     const cue = await prisma.cue.create({
       data: {
@@ -316,9 +374,14 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
                 ),
               },
               cueStepFixtures: {
-                create: (step.fixtureIds ?? []).map((fixtureId) => ({
-                  fixtureId,
-                })),
+                create: (step.fixtureIds ?? []).map((fixtureId) => {
+                  const dmxRow = (step.fixtureDmx ?? []).find((f) => f.fixtureId === fixtureId);
+                  const raw = dmxRow?.values;
+                  return {
+                    fixtureId,
+                    dmxChannelValues: raw && raw.length > 0 ? raw : [],
+                  };
+                }),
               },
             }))
           ),
@@ -349,6 +412,18 @@ cuesRouter.post("/", async (req: Request, res: Response) => {
                     name: true,
                     wledSegmentIndex: true,
                     deviceId: true,
+                  },
+                },
+              },
+            },
+            cueStepFixtures: {
+              include: {
+                fixture: {
+                  select: {
+                    id: true,
+                    name: true,
+                    startAddress: true,
+                    channelCount: true,
                   },
                 },
               },
@@ -426,6 +501,11 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
         }
       }
 
+      const fixtureDmxCheck = await validateFixtureDmxForSteps(validatedData.steps);
+      if (!fixtureDmxCheck.ok) {
+        return res.status(400).json({ error: fixtureDmxCheck.error });
+      }
+
       // Delete existing steps and create new ones
       await prisma.cueStep.deleteMany({
         where: { cueId: id },
@@ -466,7 +546,7 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
             create: Array<{ deviceId: number; wledSegmentId: number | null }>;
           };
           cueStepFixtures: {
-            create: Array<{ fixtureId: number }>;
+            create: Array<{ fixtureId: number; dmxChannelValues: number[] }>;
           };
         }>;
       };
@@ -500,9 +580,14 @@ cuesRouter.put("/:id", async (req: Request, res: Response) => {
               ),
             },
             cueStepFixtures: {
-              create: (step.fixtureIds ?? []).map((fixtureId) => ({
-                fixtureId,
-              })),
+              create: (step.fixtureIds ?? []).map((fixtureId) => {
+                const dmxRow = (step.fixtureDmx ?? []).find((f) => f.fixtureId === fixtureId);
+                const raw = dmxRow?.values;
+                return {
+                  fixtureId,
+                  dmxChannelValues: raw && raw.length > 0 ? raw : [],
+                };
+              }),
             },
           }))
         ),

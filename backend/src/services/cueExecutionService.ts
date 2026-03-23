@@ -38,6 +38,8 @@ interface CueStepWithTargets {
   wledPaletteId: number | null;
   deviceTargets: DeviceTarget[];
   fixtures: number[];
+  /** Per-fixture raw DMX when saved in cue (non-empty = use instead of color mapping) */
+  fixtureDmxById: Map<number, number[]>;
 }
 
 /** One device row paired with its cue step (for per-row color across merged cue steps). */
@@ -101,7 +103,7 @@ class CueExecutionService {
             cueStepDevices: {
               include: { wledSegment: { select: { wledSegmentIndex: true } } },
             },
-            cueStepFixtures: { select: { fixtureId: true } },
+            cueStepFixtures: { select: { fixtureId: true, dmxChannelValues: true } },
           },
           orderBy: { order: "asc" },
         },
@@ -124,27 +126,37 @@ class CueExecutionService {
       wledEffectId: number | null; wledEffectSpeed: number | null;
       wledEffectIntensity: number | null; wledPaletteId: number | null;
       cueStepDevices: Array<{ deviceId: number; wledSegmentId: number | null; wledSegment: { wledSegmentIndex: number } | null }>;
-      cueStepFixtures: Array<{ fixtureId: number }>;
-    }) => ({
-      id: step.id,
-      order: step.order,
-      targetColor: step.targetColor.length > 0 ? step.targetColor : null,
-      targetBrightness: step.targetBrightness,
-      startColor: step.startColor || [],
-      startBrightness: step.startBrightness,
-      turnOff: step.turnOff ?? false,
-      useWledEffect: step.useWledEffect ?? false,
-      wledEffectId: step.wledEffectId ?? null,
-      wledEffectSpeed: step.wledEffectSpeed ?? null,
-      wledEffectIntensity: step.wledEffectIntensity ?? null,
-      wledPaletteId: step.wledPaletteId ?? null,
-      deviceTargets: step.cueStepDevices.map((csd) => ({
-        deviceId: csd.deviceId,
-        segmentIndex:
-          csd.wledSegment != null ? csd.wledSegment.wledSegmentIndex : null,
-      })),
-      fixtures: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
-    }));
+      cueStepFixtures: Array<{ fixtureId: number; dmxChannelValues: number[] }>;
+    }) => {
+      const fixtureDmxById = new Map<number, number[]>();
+      for (const csf of step.cueStepFixtures ?? []) {
+        const v = csf.dmxChannelValues;
+        if (v != null && v.length > 0) {
+          fixtureDmxById.set(csf.fixtureId, v);
+        }
+      }
+      return {
+        id: step.id,
+        order: step.order,
+        targetColor: step.targetColor.length > 0 ? step.targetColor : null,
+        targetBrightness: step.targetBrightness,
+        startColor: step.startColor || [],
+        startBrightness: step.startBrightness,
+        turnOff: step.turnOff ?? false,
+        useWledEffect: step.useWledEffect ?? false,
+        wledEffectId: step.wledEffectId ?? null,
+        wledEffectSpeed: step.wledEffectSpeed ?? null,
+        wledEffectIntensity: step.wledEffectIntensity ?? null,
+        wledPaletteId: step.wledPaletteId ?? null,
+        deviceTargets: step.cueStepDevices.map((csd) => ({
+          deviceId: csd.deviceId,
+          segmentIndex:
+            csd.wledSegment != null ? csd.wledSegment.wledSegmentIndex : null,
+        })),
+        fixtures: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
+        fixtureDmxById,
+      };
+    });
 
     this.executionStatus = {
       isRunning: true,
@@ -440,10 +452,23 @@ class CueExecutionService {
       : [255, 255, 255, 255];
     const targetBrightness = step.targetBrightness ?? 255;
 
+    const rawSnapshot = step.fixtureDmxById.get(fixtureId);
+
     if (step.turnOff) {
-      const values = buildFixtureChannelValues(purposes, [0, 0, 0, 0], 0, true);
+      const values = Array(fixture.channelCount).fill(0);
       await sendFixtureDmx(fixtureId, values);
       this.fixtureLastState.set(fixtureId, { color: [0, 0, 0, 0], brightness: 0 });
+      return;
+    }
+
+    if (rawSnapshot && rawSnapshot.length === fixture.channelCount) {
+      const clamped = rawSnapshot.map((v) => Math.max(0, Math.min(255, v)));
+      await sendFixtureDmx(fixtureId, clamped);
+      const c = clamped;
+      this.fixtureLastState.set(fixtureId, {
+        color: [c[0] ?? 0, c[1] ?? 0, c[2] ?? 0, c[3] ?? 0],
+        brightness: 255,
+      });
       return;
     }
 

@@ -253,6 +253,13 @@ export interface Show {
   }>;
 }
 
+/** Response from POST /api/shows/import */
+export interface ShowImportResult {
+  showId: number;
+  cueCount: number;
+  cueListCount: number;
+}
+
 /**
  * Create show request
  */
@@ -620,6 +627,8 @@ export interface CueStepDevice {
 export interface CueStepFixture {
   id: number;
   fixtureId: number;
+  /** Non-empty = cue uses raw DMX for this fixture instead of color/brightness */
+  dmxChannelValues?: number[];
   fixture: {
     id: number;
     name: string;
@@ -691,6 +700,7 @@ export interface CreateCueRequest {
     deviceIds?: number[];
     segmentTargets?: number[];
     fixtureIds?: number[];
+    fixtureDmx?: Array<{ fixtureId: number; values: number[] }>;
   }>;
 }
 
@@ -718,6 +728,7 @@ export interface UpdateCueRequest {
     deviceIds?: number[];
     segmentTargets?: number[];
     fixtureIds?: number[];
+    fixtureDmx?: Array<{ fixtureId: number; values: number[] }>;
   }>;
 }
 
@@ -1289,6 +1300,49 @@ export const showsApi = {
       method: "DELETE",
     });
     return handleResponse<void>(response);
+  },
+
+  /**
+   * Download show as JSON (for import on another instance). Triggers a browser file download.
+   */
+  async exportToFile(showId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/shows/${showId}/export`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error((err as ApiError).error || "Export failed");
+    }
+    const blob = await response.blob();
+    const cd = response.headers.get("Content-Disposition");
+    let filename = `show-${showId}-export.json`;
+    const m = cd?.match(/filename="([^"]+)"/);
+    if (m?.[1]) filename = m[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Import a show from exported JSON. Targets are matched by WLED device IP, segment index, and Art-Net node IP + fixture address.
+   */
+  async importBundle(
+    bundle: unknown,
+    options?: { nameSuffix?: string }
+  ): Promise<ShowImportResult> {
+    const body =
+      options?.nameSuffix != null && options.nameSuffix !== ""
+        ? { bundle, nameSuffix: options.nameSuffix }
+        : bundle;
+    const response = await fetch(`${API_BASE_URL}/shows/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return handleResponse<ShowImportResult>(response);
   },
 };
 

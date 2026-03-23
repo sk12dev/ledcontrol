@@ -10,7 +10,12 @@ import {
   devicesApi,
   wledSegmentsApi,
   type WledSegment,
+  type DmxFixture,
 } from "../api/backendClient";
+import {
+  DmxChannelsModal,
+  buildFixtureChannelValuesFromState,
+} from "@/app/components/DmxChannelsModal";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ColorPicker } from "./ColorPicker";
 import { ColorPresetSelector } from "./ColorPresetSelector";
@@ -37,6 +42,25 @@ interface CueStep {
   deviceIds: number[];
   segmentTargets: number[];
   fixtureIds: number[];
+  /** Per-fixture raw DMX for this cue step (fog machines, etc.); omit entry to use color/brightness */
+  fixtureDmxById?: Record<number, number[]>;
+}
+
+function buildFixtureDmxPayload(
+  step: CueStep,
+  fixturesList: DmxFixture[]
+): Array<{ fixtureId: number; values: number[] }> {
+  const m = step.fixtureDmxById;
+  if (!m) return [];
+  const out: Array<{ fixtureId: number; values: number[] }> = [];
+  for (const [fidStr, values] of Object.entries(m)) {
+    const fixtureId = Number(fidStr);
+    const fx = fixturesList.find((f) => f.id === fixtureId);
+    if (fx && values.length === fx.channelCount) {
+      out.push({ fixtureId, values: [...values] });
+    }
+  }
+  return out;
 }
 
 interface CueBuilderProps {
@@ -85,6 +109,16 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           deviceIds,
           segmentTargets,
           fixtureIds: (step.cueStepFixtures ?? []).map((csf) => csf.fixtureId),
+          fixtureDmxById: (() => {
+            const m: Record<number, number[]> = {};
+            for (const csf of step.cueStepFixtures ?? []) {
+              const v = csf.dmxChannelValues;
+              if (v != null && v.length > 0) {
+                m[csf.fixtureId] = [...v];
+              }
+            }
+            return Object.keys(m).length > 0 ? m : undefined;
+          })(),
         };
       });
     }
@@ -99,6 +133,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   const [wledLoading, setWledLoading] = useState(false);
   const wledLoadingRef = useRef<Set<number>>(new Set());
   const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
+  const [dmxModal, setDmxModal] = useState<{ stepIndex: number; fixtureId: number } | null>(null);
   const [segmentsByDevice, setSegmentsByDevice] = useState<Record<number, WledSegment[]>>({});
 
   useEffect(() => {
@@ -204,6 +239,11 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       deviceIds: [...(stepToDuplicate.deviceIds ?? [])],
       segmentTargets: [...(stepToDuplicate.segmentTargets ?? [])],
       fixtureIds: [...(stepToDuplicate.fixtureIds ?? [])],
+      fixtureDmxById: stepToDuplicate.fixtureDmxById
+        ? Object.fromEntries(
+            Object.entries(stepToDuplicate.fixtureDmxById).map(([k, v]) => [k, [...v]])
+          )
+        : undefined,
     };
     
     // Insert the duplicated step right after the original
@@ -258,9 +298,12 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   const handleFixtureToggle = (stepIndex: number, fixtureId: number) => {
     const step = steps[stepIndex];
     const fids = step.fixtureIds ?? [];
+    const dmx = { ...(step.fixtureDmxById ?? {}) };
     if (fids.includes(fixtureId)) {
+      delete dmx[fixtureId];
       updateStep(stepIndex, {
         fixtureIds: fids.filter((id) => id !== fixtureId),
+        fixtureDmxById: Object.keys(dmx).length > 0 ? dmx : undefined,
       });
     } else {
       updateStep(stepIndex, {
@@ -272,10 +315,16 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
   const handleGroupToggle = (stepIndex: number, groupFixtureIds: number[]) => {
     const step = steps[stepIndex];
     const fids = step.fixtureIds ?? [];
-    const allInStep = groupFixtureIds.every((id) => fids.includes(id));
+    const dmx = { ...(step.fixtureDmxById ?? {}) };
+    const allInStep =
+      groupFixtureIds.length > 0 && groupFixtureIds.every((id) => fids.includes(id));
     if (allInStep) {
+      for (const id of groupFixtureIds) {
+        delete dmx[id];
+      }
       updateStep(stepIndex, {
         fixtureIds: fids.filter((id) => !groupFixtureIds.includes(id)),
+        fixtureDmxById: Object.keys(dmx).length > 0 ? dmx : undefined,
       });
     } else {
       const merged = new Set([...fids, ...groupFixtureIds]);
@@ -312,9 +361,10 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       }
       const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
       const hasEffect = step.useWledEffect && step.wledEffectId != null;
-      if (!step.turnOff && !hasColorOrBrightness && !hasEffect) {
+      const hasFixtureDmx = Object.keys(step.fixtureDmxById ?? {}).length > 0;
+      if (!step.turnOff && !hasColorOrBrightness && !hasEffect && !hasFixtureDmx) {
         setError(
-          `Target ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
+          `Target ${step.order + 1} must have turn off, color/brightness, a WLED effect, or per-fixture DMX channels`
         );
         return;
       }
@@ -349,6 +399,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           deviceIds: step.deviceIds ?? [],
           segmentTargets: step.segmentTargets ?? [],
           fixtureIds: step.fixtureIds ?? [],
+          fixtureDmx: buildFixtureDmxPayload(step, fixtures),
         })),
       };
 
@@ -394,9 +445,10 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
       }
       const hasColorOrBrightness = step.targetColor != null || step.targetBrightness != null;
       const hasEffect = step.useWledEffect && step.wledEffectId != null;
-      if (!step.turnOff && !hasColorOrBrightness && !hasEffect) {
+      const hasFixtureDmx = Object.keys(step.fixtureDmxById ?? {}).length > 0;
+      if (!step.turnOff && !hasColorOrBrightness && !hasEffect && !hasFixtureDmx) {
         setError(
-          `Target ${step.order + 1} must have turn off, color/brightness, or a WLED effect`
+          `Target ${step.order + 1} must have turn off, color/brightness, a WLED effect, or per-fixture DMX channels`
         );
         return;
       }
@@ -431,6 +483,7 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
           deviceIds: step.deviceIds ?? [],
           segmentTargets: step.segmentTargets ?? [],
           fixtureIds: step.fixtureIds ?? [],
+          fixtureDmx: buildFixtureDmxPayload(step, fixtures),
         })),
       };
 
@@ -932,9 +985,12 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium mb-2 text-zinc-300">
+                      <label className="block text-sm font-medium mb-1 text-zinc-300">
                         Target Fixtures (DMX)
                       </label>
+                      <p className="text-xs text-zinc-500 mb-2">
+                        Select a fixture, then use Channels to set raw DMX for this cue (fog, hazers, fans, etc.).
+                      </p>
                       {groups.length > 0 && (
                         <div className="mb-2">
                           <span className="text-xs text-zinc-500 block mb-1">Groups</span>
@@ -985,25 +1041,67 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
                               {fixtures.map((fixture) => {
                                 const fids = step.fixtureIds ?? [];
                                 const checked = fids.includes(fixture.id);
+                                const hasCustomDmx =
+                                  (step.fixtureDmxById?.[fixture.id]?.length ?? 0) > 0;
                                 return (
-                                  <label
+                                  <div
                                     key={fixture.id}
-                                    className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer border ${
+                                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded border ${
                                       checked
                                         ? "bg-emerald-600 border-emerald-500 text-white"
                                         : "bg-transparent border-transparent text-zinc-300 hover:bg-zinc-700/50"
                                     }`}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => handleFixtureToggle(index, fixture.id)}
-                                      className="h-4 w-4 rounded border-zinc-600"
-                                    />
-                                    <span className="truncate text-sm">
-                                      {fixture.name} (Ch{fixture.startAddress})
-                                    </span>
-                                  </label>
+                                    <label className="flex flex-1 min-w-0 items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => handleFixtureToggle(index, fixture.id)}
+                                        className="h-4 w-4 shrink-0 rounded border-zinc-600"
+                                      />
+                                      <span className="truncate text-sm">
+                                        {fixture.name} (Ch{fixture.startAddress})
+                                      </span>
+                                    </label>
+                                    {checked && (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDmxModal({ stepIndex: index, fixtureId: fixture.id });
+                                          }}
+                                          className="shrink-0 px-2 py-0.5 text-xs rounded bg-black/25 hover:bg-black/40 border border-white/20"
+                                          title="Set per-channel DMX for this cue (fog, fans, etc.)"
+                                        >
+                                          Channels
+                                        </button>
+                                        {hasCustomDmx && (
+                                          <>
+                                            <span className="text-[10px] uppercase tracking-wide text-amber-200/90 shrink-0">
+                                              DMX
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const dmx = { ...(step.fixtureDmxById ?? {}) };
+                                                delete dmx[fixture.id];
+                                                updateStep(index, {
+                                                  fixtureDmxById:
+                                                    Object.keys(dmx).length > 0 ? dmx : undefined,
+                                                });
+                                              }}
+                                              className="shrink-0 text-[10px] text-amber-100/90 underline hover:text-white"
+                                              title="Use color/brightness targets for this fixture"
+                                            >
+                                              Clear
+                                            </button>
+                                          </>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
                                 );
                               })}
                             </div>
@@ -1022,6 +1120,51 @@ export function CueBuilder({ cue, showId: propShowId, onSave, onCancel, onTest }
         )}
       </div>
 
+      {dmxModal && (() => {
+        const fixture = fixtures.find((f) => f.id === dmxModal.fixtureId);
+        if (!fixture) return null;
+        const step = steps[dmxModal.stepIndex];
+        if (!step) return null;
+        const purposes =
+          Array.isArray(fixture.channelPurposes) && fixture.channelPurposes.length === fixture.channelCount
+            ? (fixture.channelPurposes as string[])
+            : Array(fixture.channelCount).fill("dimmer");
+        const snap = step.fixtureDmxById?.[fixture.id];
+        const initialChannels =
+          snap && snap.length === fixture.channelCount
+            ? snap
+            : buildFixtureChannelValuesFromState(
+                purposes,
+                step.targetColor ?? [255, 255, 255, 0],
+                step.targetBrightness ?? 255,
+                !step.turnOff
+              );
+        return (
+          <DmxChannelsModal
+            key={`${fixture.id}-${dmxModal.stepIndex}`}
+            fixture={fixture}
+            initialChannels={initialChannels}
+            isOpen
+            onClose={() => setDmxModal(null)}
+            liveMode={false}
+            onApplyToCue={(channels) => {
+              setSteps((prev) => {
+                const next = [...prev];
+                const s = next[dmxModal.stepIndex];
+                if (!s) return prev;
+                next[dmxModal.stepIndex] = {
+                  ...s,
+                  fixtureDmxById: {
+                    ...(s.fixtureDmxById ?? {}),
+                    [fixture.id]: channels,
+                  },
+                };
+                return next;
+              });
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

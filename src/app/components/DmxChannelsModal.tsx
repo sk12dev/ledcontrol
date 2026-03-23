@@ -74,6 +74,8 @@ interface DmxChannelsModalProps {
   isOpen: boolean;
   onClose: () => void;
   liveMode: boolean;
+  /** When set (e.g. cue builder), primary action stores values on the cue instead of only live output */
+  onApplyToCue?: (channels: number[]) => void;
 }
 
 export function DmxChannelsModal({
@@ -82,6 +84,7 @@ export function DmxChannelsModal({
   isOpen,
   onClose,
   liveMode,
+  onApplyToCue,
 }: DmxChannelsModalProps) {
   const [channels, setChannels] = useState<number[]>(() => [...initialChannels]);
   const liveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,6 +164,7 @@ export function DmxChannelsModal({
           <DialogDescription className="text-zinc-400">
             Ch {fixture.startAddress}–{fixture.startAddress + fixture.channelCount - 1} (0–255)
             {liveMode && " · Live"}
+            {onApplyToCue && " · Saved on the cue when you confirm (not sent to stage until the cue runs)"}
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="flex-1 min-h-0">
@@ -200,17 +204,36 @@ export function DmxChannelsModal({
           </div>
         </ScrollArea>
         <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
-          <Button variant="outline" className="border-zinc-700" onClick={onClose}>
-            Close
-          </Button>
-          <Button
-            className="bg-violet-600 hover:bg-violet-700"
-            onClick={() => {
-              executionApi.setFixtureChannels(fixture.id, channels).catch((e) => console.error("setFixtureChannels failed:", e));
-            }}
-          >
-            {liveMode ? "Send now" : "Send"}
-          </Button>
+          {onApplyToCue ? (
+            <>
+              <Button variant="outline" className="border-zinc-700" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-violet-600 hover:bg-violet-700"
+                onClick={() => {
+                  onApplyToCue(channels);
+                  onClose();
+                }}
+              >
+                Save to cue
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" className="border-zinc-700" onClick={onClose}>
+                Close
+              </Button>
+              <Button
+                className="bg-violet-600 hover:bg-violet-700"
+                onClick={() => {
+                  executionApi.setFixtureChannels(fixture.id, channels).catch((e) => console.error("setFixtureChannels failed:", e));
+                }}
+              >
+                {liveMode ? "Send now" : "Send"}
+              </Button>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

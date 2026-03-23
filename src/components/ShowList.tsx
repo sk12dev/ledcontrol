@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Plus, Edit2, Trash2, FolderOpen, Zap, Network, Aperture, SlidersHorizontal } from "lucide-react";
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  FolderOpen,
+  Zap,
+  Network,
+  Aperture,
+  SlidersHorizontal,
+  Download,
+  Upload,
+} from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card";
 import {
@@ -15,7 +26,7 @@ import {
 } from "@/app/components/ui/alert-dialog";
 import { useShows } from "../hooks/useShows";
 import { ShowFormModal } from "./ShowFormModal";
-import { type Show } from "../api/backendClient";
+import { showsApi, type Show } from "../api/backendClient";
 
 export function ShowList() {
   const navigate = useNavigate();
@@ -26,6 +37,8 @@ export function ShowList() {
   const [deleteShowId, setDeleteShowId] = useState<number | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const hasCheckedRedirect = useRef(false);
 
   // Check localStorage for selected show and redirect if valid
@@ -99,6 +112,40 @@ export function ShowList() {
 
   const handleSaveShow = async () => {
     await refreshShows();
+  };
+
+  const handleExportShow = async (e: React.MouseEvent, showId: number) => {
+    e.stopPropagation();
+    try {
+      await showsApi.exportToFile(showId);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Export failed");
+    }
+  };
+
+  const handleImportPick = () => {
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as unknown;
+      const result = await showsApi.importBundle(parsed, { nameSuffix: " (imported)" });
+      await refreshShows();
+      localStorage.setItem("selectedShowId", String(result.showId));
+      navigate(`/show/${result.showId}`);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
   };
 
   if (loading) {
@@ -180,13 +227,31 @@ export function ShowList() {
                 </Button>
               </nav>
             </div>
-            <Button
-              onClick={handleCreateShow}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create Show
-            </Button>
+            <div className="flex items-center gap-2">
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+              <Button
+                variant="outline"
+                disabled={importing}
+                onClick={handleImportPick}
+                className="border-zinc-700 text-zinc-300 hover:text-white"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {importing ? "Importing…" : "Import show"}
+              </Button>
+              <Button
+                onClick={handleCreateShow}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Show
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -256,6 +321,15 @@ export function ShowList() {
                     >
                       <Edit2 className="w-4 h-4 mr-2" />
                       Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      title="Export show JSON for another instance"
+                      className="border-zinc-700 text-zinc-400 hover:text-white"
+                      onClick={(e) => void handleExportShow(e, show.id)}
+                    >
+                      <Download className="w-4 h-4" />
                     </Button>
                     <Button
                       size="sm"

@@ -209,10 +209,12 @@ model BuskingPatchEntry {
 
 // CueStepFixture model - Links cue steps to DMX fixtures
 model CueStepFixture {
-  id        Int      @id @default(autoincrement())
-  cueStepId Int      @map("cue_step_id")
-  fixtureId Int      @map("fixture_id")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamp
+  id               Int      @id @default(autoincrement())
+  cueStepId        Int      @map("cue_step_id")
+  fixtureId        Int      @map("fixture_id")
+  /// When set (length = fixture channel count), cue uses raw DMX instead of color/brightness mapping
+  dmxChannelValues Int[]    @default([]) @map("dmx_channel_values")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamp
 
   // Relations
   cueStep CueStep   @relation(fields: [cueStepId], references: [id], onDelete: Cascade)

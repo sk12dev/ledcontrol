@@ -2,8 +2,35 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 import type { Request, Response } from "express";
+import {
+  exportShowToBundle,
+  importShowBundle,
+  showExportBundleSchema,
+} from "../services/showExportImport.js";
 
 export const showsRouter = Router();
+
+// POST /api/shows/import — import a show from another instance (JSON bundle)
+showsRouter.post("/import", async (req: Request, res: Response) => {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const bundlePayload =
+      body != null && typeof body === "object" && "bundle" in body && body.bundle != null
+        ? body.bundle
+        : body;
+    const parsed = showExportBundleSchema.parse(bundlePayload);
+    const nameSuffix =
+      typeof body?.nameSuffix === "string" ? body.nameSuffix : undefined;
+    const result = await importShowBundle(parsed, { nameSuffix });
+    res.status(201).json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: "Invalid export bundle", details: error.issues });
+    }
+    const message = error instanceof Error ? error.message : "Import failed";
+    return res.status(400).json({ error: message });
+  }
+});
 
 // Validation schemas
 const createShowSchema = z.object({
@@ -56,6 +83,33 @@ showsRouter.get("/", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching shows:", error);
     res.status(500).json({ error: "Failed to fetch shows" });
+  }
+});
+
+// GET /api/shows/:id/export — download full show as JSON (for import elsewhere)
+showsRouter.get("/:id/export", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "Invalid show ID" });
+    }
+
+    const bundle = await exportShowToBundle(id);
+    if (!bundle) {
+      return res.status(404).json({ error: "Show not found" });
+    }
+
+    const safeName =
+      bundle.show.name.replace(/[^\w\-]+/g, "_").replace(/_+/g, "_").slice(0, 80) || "show";
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${safeName}-show-export.json"`
+    );
+    res.json(bundle);
+  } catch (error) {
+    console.error("Error exporting show:", error);
+    res.status(500).json({ error: "Failed to export show" });
   }
 });
 
