@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/app/components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/app/components/ui/sheet";
 import { useDmxFixtures } from "@/hooks/useDmxFixtures";
 import { useMultiDevice } from "@/hooks/useMultiDevice";
 import { useShows } from "@/hooks/useShows";
@@ -78,7 +77,6 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 const LIVE_DEBOUNCE_MS = 120;
-// Ctrl+Shift+@ to open/close command drawer
 
 function colorToHex(color: [number, number, number, number]): string {
   const [r, g, b] = color;
@@ -125,8 +123,7 @@ export default function BuskingPage() {
   const [patchDraft, setPatchDraft] = useState<BuskingPatchEntryInput[]>([]);
   const [patchDraftDirty, setPatchDraftDirty] = useState(false);
 
-  // Command drawer
-  const [commandDrawerOpen, setCommandDrawerOpen] = useState(false);
+  // Command bar (fixed at bottom)
   const [commandLine, setCommandLine] = useState("");
   const [commandMessage, setCommandMessage] = useState<string | null>(null);
   const commandInputRef = useRef<HTMLInputElement>(null);
@@ -379,21 +376,24 @@ export default function BuskingPage() {
       let order = 0;
       for (const unit of patchedUnitsOrdered) {
         const state = getState(unit);
+        const turnOff = !state.on;
+        const targetBrightness =
+          turnOff ? null : Math.max(1, state.brightness);
         if (unit.type === "device") {
           steps.push({
             order: order++,
             deviceIds: [unit.id],
             targetColor: state.color,
-            targetBrightness: state.brightness,
-            turnOff: !state.on,
+            targetBrightness,
+            turnOff,
           });
         } else {
           steps.push({
             order: order++,
             fixtureIds: [unit.id],
             targetColor: state.color,
-            targetBrightness: state.brightness,
-            turnOff: !state.on,
+            targetBrightness,
+            turnOff,
           });
         }
       }
@@ -479,17 +479,6 @@ export default function BuskingPage() {
     unifiedColorPresets,
   ]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "@" || (!e.ctrlKey && !e.metaKey) || !e.shiftKey) return;
-      if (commandInputRef.current && document.activeElement === commandInputRef.current) return;
-      e.preventDefault();
-      setCommandDrawerOpen((open) => !open);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   const isLoading = devicesLoading || fixturesLoading;
 
   if (isLoading) {
@@ -568,7 +557,7 @@ export default function BuskingPage() {
                 <div>
                   <h1 className="font-semibold text-lg">Busking</h1>
                   <p className="text-xs text-zinc-500">
-                    Adjust fixtures live or save as cue. Ctrl+Shift+@ for command line.
+                    Adjust fixtures live or save as cue. Command line is always at the bottom.
                   </p>
                 </div>
               </div>
@@ -597,6 +586,7 @@ export default function BuskingPage() {
         </div>
       </div>
 
+      <div className="pb-48">
       {/* Patch section - collapsible */}
       <div className="container mx-auto px-6 pt-2">
         <button
@@ -712,6 +702,7 @@ export default function BuskingPage() {
           ))}
         </div>
       </div>
+      </div>
 
       <Dialog open={saveModalOpen} onOpenChange={setSaveModalOpen}>
         <DialogContent className="sm:max-w-[420px] bg-zinc-900 border-zinc-800">
@@ -783,19 +774,16 @@ export default function BuskingPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Command line drawer - Ctrl+Shift+@ */}
-      <Sheet open={commandDrawerOpen} onOpenChange={setCommandDrawerOpen}>
-        <SheetContent
-          side="bottom"
-          className="h-auto max-h-[40vh] flex flex-col gap-0 border-t border-zinc-800 bg-zinc-900 p-0"
-        >
-          <SheetHeader className="border-b border-zinc-800 px-4 py-3 shrink-0">
-            <SheetTitle className="text-white text-base">Command line</SheetTitle>
-            <p className="text-xs text-zinc-500 mt-1">
-              1 @ 50 | 1 On | 1 Thru 5 Full | 1 Off | 1 @ 50 color Red
-            </p>
-          </SheetHeader>
-          <div className="p-4 flex flex-col gap-2">
+      {/* Command line — fixed bottom bar, always visible */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-800 bg-zinc-900/95 backdrop-blur-sm shadow-[0_-8px_32px_rgba(0,0,0,0.35)]">
+        <div className="container mx-auto px-6 py-3 max-w-screen-2xl">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-zinc-800/80 pb-2 mb-1">
+              <h2 className="text-sm font-medium text-white">Command line</h2>
+              <p className="text-xs text-zinc-500">
+                1 @ 50 · 1 On · 1 Thru 5 Full · 1-5 Full · 1,2,5 Full · 1 Off · 1 @ 50 color Red
+              </p>
+            </div>
             <div className="flex gap-2 flex-wrap">
               <Input
                 ref={commandInputRef}
@@ -809,7 +797,6 @@ export default function BuskingPage() {
                 }}
                 placeholder="1 @ 50"
                 className="bg-zinc-800 border-zinc-700 text-white font-mono flex-1 min-w-[240px]"
-                autoFocus
               />
               <Select
                 value=""
@@ -861,8 +848,8 @@ export default function BuskingPage() {
               <p className="text-sm text-zinc-400">{commandMessage}</p>
             )}
           </div>
-        </SheetContent>
-      </Sheet>
+        </div>
+      </div>
     </div>
   );
 }
