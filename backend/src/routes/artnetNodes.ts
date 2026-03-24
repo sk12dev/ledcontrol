@@ -74,7 +74,7 @@ artnetNodesRouter.get("/dmx-monitor", async (_req: Request, res: Response) => {
 });
 
 // GET /api/artnet-nodes/:id
-artnetNodesRouter.get("/:id", async (req: Request, res: Response) => {
+artnetNodesRouter.get("/:id(\\d+)", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -132,7 +132,7 @@ artnetNodesRouter.post("/", async (req: Request, res: Response) => {
 });
 
 // PUT /api/artnet-nodes/:id
-artnetNodesRouter.put("/:id", async (req: Request, res: Response) => {
+artnetNodesRouter.put("/:id(\\d+)", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -174,7 +174,7 @@ artnetNodesRouter.put("/:id", async (req: Request, res: Response) => {
 });
 
 // DELETE /api/artnet-nodes/:id
-artnetNodesRouter.delete("/:id", async (req: Request, res: Response) => {
+artnetNodesRouter.delete("/:id(\\d+)", async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
