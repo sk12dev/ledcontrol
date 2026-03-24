@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { z } from "zod";
 import type { Request, Response } from "express";
+import { getUniverseShadowSnapshot } from "../services/artnetService.js";
 
 export const artnetNodesRouter = Router();
 
@@ -39,6 +40,36 @@ artnetNodesRouter.get("/", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching Art-Net nodes:", error);
     res.status(500).json({ error: "Failed to fetch Art-Net nodes" });
+  }
+});
+
+// GET /api/artnet-nodes/dmx-monitor — live last-sent DMX per node universe (must be before /:id)
+artnetNodesRouter.get("/dmx-monitor", async (_req: Request, res: Response) => {
+  try {
+    const nodes = await prisma.artNetNode.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        dmxFixtures: {
+          select: { id: true, name: true, startAddress: true, channelCount: true },
+          orderBy: { startAddress: "asc" },
+        },
+      },
+    });
+
+    const payload = nodes.map((n) => ({
+      id: n.id,
+      name: n.name,
+      ipAddress: n.ipAddress,
+      subnet: n.subnet,
+      universe: n.universe,
+      channels: getUniverseShadowSnapshot(n.ipAddress, n.subnet, n.universe),
+      fixtures: n.dmxFixtures,
+    }));
+
+    res.json(payload);
+  } catch (error) {
+    console.error("Error building DMX monitor snapshot:", error);
+    res.status(500).json({ error: "Failed to fetch DMX monitor data" });
   }
 });
 

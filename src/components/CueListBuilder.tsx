@@ -600,7 +600,9 @@ export function CueListBuilder({ cueList, showId: propShowId, onSave, onCancel }
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-zinc-400 mb-0.5">Duration (s) — empty = ∞</label>
+                        <label className="block text-xs text-zinc-400 mb-0.5">
+                          Hold (s) after fade — empty = stay until step
+                        </label>
                         <input
                           type="number"
                           min={0}

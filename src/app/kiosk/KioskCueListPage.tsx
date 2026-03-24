@@ -42,7 +42,7 @@ export default function KioskCueListPage() {
     stepForward,
     stepBackward,
     goTo,
-  } = useCueLists(undefined, showId);
+  } = useCueLists(undefined, showId, { pollIntervalMs: 400 });
 
   const { getConnectedDevices, refreshDeviceStates } = useMultiDevice();
 

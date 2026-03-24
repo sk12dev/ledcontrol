@@ -20,6 +20,34 @@ let dmxnetInstance: { newSender: (opts: object) => Sender } | null = null;
 // Cache senders by node key: ip_subnet_universe
 const senderCache = new Map<string, Sender>();
 
+/** Last outgoing DMX per universe (for /dmx-monitor). Key matches sender cache. */
+const universeShadow = new Map<string, Uint8Array>();
+
+function getOrCreateShadow(ip: string, subnet: number, universe: number): Uint8Array {
+  const key = getSenderKey(ip, subnet, universe);
+  let buf = universeShadow.get(key);
+  if (!buf) {
+    buf = new Uint8Array(512);
+    universeShadow.set(key, buf);
+  }
+  return buf;
+}
+
+/**
+ * Snapshot of 512 channel values (0–255) last sent for this universe, or zeros if never sent.
+ */
+export function getUniverseShadowSnapshot(
+  ip: string,
+  subnet: number,
+  universe: number
+): number[] {
+  const buf = universeShadow.get(getSenderKey(ip, subnet, universe));
+  if (!buf) {
+    return Array.from({ length: 512 }, () => 0);
+  }
+  return Array.from(buf);
+}
+
 function getDmxNet() {
   if (!dmxnetInstance) {
     dmxnetInstance = new dmxlib.dmxnet({
@@ -148,11 +176,18 @@ export async function sendFixtureDmx(
     artNetNode.universe
   );
 
+  const shadow = getOrCreateShadow(
+    artNetNode.ipAddress,
+    artNetNode.subnet,
+    artNetNode.universe
+  );
+
   // dmxnet uses 0-indexed channels (0-511), DMX uses 1-512
   for (let i = 0; i < channelValues.length; i++) {
     const dmxChannel = startAddress - 1 + i; // convert to 0-indexed
-    const value = channelValues[i];
-    sender.prepChannel(dmxChannel, Math.max(0, Math.min(255, value)));
+    const value = Math.max(0, Math.min(255, channelValues[i]));
+    shadow[dmxChannel] = value;
+    sender.prepChannel(dmxChannel, value);
   }
 
   sender.transmit();
@@ -177,9 +212,11 @@ export function sendUniverseDmx(
   channelValues: number[]
 ): void {
   const sender = getSender(nodeIp, subnet, universe);
+  const shadow = getOrCreateShadow(nodeIp, subnet, universe);
 
   for (let i = 0; i < channelValues.length && i < 512; i++) {
     const value = Math.max(0, Math.min(255, channelValues[i]));
+    shadow[i] = value;
     sender.prepChannel(i, value);
   }
   sender.transmit();

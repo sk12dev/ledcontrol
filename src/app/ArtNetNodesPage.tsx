@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Network, Plus, Edit2 } from "lucide-react";
+import { ArrowLeft, Network, Plus, Edit2, Radio } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { ArtNetNodeModal } from "@/app/components/ArtNetNodeModal";
 import { useArtNetNodes } from "@/hooks/useArtNetNodes";
@@ -31,7 +31,7 @@ export default function ArtNetNodesPage() {
     <div className="min-h-screen bg-zinc-950 text-white">
       <div className="border-b border-zinc-900 bg-zinc-950/95 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
@@ -53,6 +53,15 @@ export default function ArtNetNodesPage() {
                 </div>
               </div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-zinc-700 text-zinc-300 shrink-0"
+              onClick={() => navigate("/devices/dmx/monitor")}
+            >
+              <Radio className="w-4 h-4 mr-2" />
+              Live monitor
+            </Button>
           </div>
         </div>
       </div>

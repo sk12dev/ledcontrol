@@ -13,14 +13,124 @@ export const cueListsRouter = Router();
 type CueListCueRow = {
   cueId: number;
   fadeInSeconds: unknown;
+  fadeOutSeconds?: unknown;
+  durationSeconds?: unknown;
   repeatIntervalSeconds?: unknown;
   repeatTotalPlays: number | null;
 };
 
-/** Run cue + optional timed repeats until the list moves to another position. */
-function executeCueListPlayback(cueListId: number, item: CueListCueRow): void {
+/** Cleared when the list steps to another cue or a new cue is triggered. */
+const durationTimersByCueList = new Map<number, NodeJS.Timeout>();
+
+function clearCueListDurationTimers(cueListId: number): void {
+  const t = durationTimersByCueList.get(cueListId);
+  if (t) {
+    clearTimeout(t);
+    durationTimersByCueList.delete(cueListId);
+  }
+}
+
+/**
+ * After fade-in + hold (durationSeconds), advance to the next cue if still on this position.
+ * durationSeconds null = hold until manual step.
+ */
+function scheduleDurationAutoAdvance(
+  cueListId: number,
+  fromPosition: number,
+  item: CueListCueRow
+): void {
+  clearCueListDurationTimers(cueListId);
+
+  const holdRaw = item.durationSeconds;
+  if (holdRaw === null || holdRaw === undefined) {
+    return;
+  }
+  const holdSec = Number(holdRaw);
+  if (Number.isNaN(holdSec) || holdSec < 0) {
+    return;
+  }
+
+  const fadeIn = Number(item.fadeInSeconds ?? 0);
+  const delayMs = (fadeIn + holdSec) * 1000;
+
+  const timer = setTimeout(() => {
+    durationTimersByCueList.delete(cueListId);
+    void (async () => {
+      try {
+        const cueList = await prisma.cueList.findUnique({
+          where: { id: cueListId },
+          include: {
+            cueListCues: {
+              orderBy: { order: "asc" },
+            },
+          },
+        });
+        if (!cueList || cueList.cueListCues.length === 0) {
+          return;
+        }
+        if (cueList.currentPosition !== fromPosition) {
+          return;
+        }
+        if (cueList.currentPosition >= cueList.cueListCues.length - 1) {
+          return;
+        }
+
+        const nextPosition = Math.min(
+          cueList.currentPosition + 1,
+          cueList.cueListCues.length - 1
+        );
+
+        const updatedCueList = await prisma.cueList.update({
+          where: { id: cueListId },
+          data: { currentPosition: nextPosition },
+          include: {
+            show: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+              },
+            },
+            cueListCues: {
+              include: {
+                cue: {
+                  select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                  },
+                },
+              },
+              orderBy: { order: "asc" },
+            },
+          },
+        });
+
+        const nextItem = updatedCueList.cueListCues[nextPosition];
+        if (nextItem) {
+          executeCueListPlayback(cueListId, nextItem, nextPosition);
+        }
+      } catch (error) {
+        console.error(
+          `[CueList] Duration auto-advance failed for list ${cueListId}:`,
+          error
+        );
+      }
+    })();
+  }, delayMs);
+
+  durationTimersByCueList.set(cueListId, timer);
+}
+
+/** Run cue + optional timed repeats + optional auto-advance after duration. */
+function executeCueListPlayback(
+  cueListId: number,
+  item: CueListCueRow,
+  currentListPosition: number
+): void {
   try {
     clearCueListRepeatTimers(cueListId);
+    clearCueListDurationTimers(cueListId);
     cueExecutionService.prepareForNextCue();
     const fadeIn = Number(item.fadeInSeconds ?? 0);
     const interval = Number(item.repeatIntervalSeconds ?? 0);
@@ -38,6 +148,7 @@ function executeCueListPlayback(cueListId: number, item: CueListCueRow): void {
       interval,
       item.repeatTotalPlays
     );
+    scheduleDurationAutoAdvance(cueListId, currentListPosition, item);
   } catch (error) {
     console.error(`Error executing cue ${item.cueId}:`, error);
   }
@@ -578,7 +689,7 @@ cueListsRouter.post(
       const currentCueListItem = updatedCueList.cueListCues[nextPosition];
 
       if (currentCueListItem) {
-        executeCueListPlayback(id, currentCueListItem);
+        executeCueListPlayback(id, currentCueListItem, nextPosition);
       }
 
       res.json({
@@ -652,7 +763,7 @@ cueListsRouter.post(
       const currentCueListItem = updatedCueList.cueListCues[prevPosition];
 
       if (currentCueListItem) {
-        executeCueListPlayback(id, currentCueListItem);
+        executeCueListPlayback(id, currentCueListItem, prevPosition);
       }
 
       res.json({
@@ -736,7 +847,7 @@ cueListsRouter.post("/:id/go-to", async (req: Request, res: Response) => {
       updatedCueList.cueListCues[validatedData.position];
 
     if (currentCueListItem) {
-      executeCueListPlayback(id, currentCueListItem);
+      executeCueListPlayback(id, currentCueListItem, validatedData.position);
     }
 
     res.json({

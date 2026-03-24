@@ -20,7 +20,16 @@ interface UseCueListsReturn {
   refreshCueLists: () => Promise<void>;
 }
 
-export function useCueLists(userId?: number, showId?: number): UseCueListsReturn {
+export type UseCueListsOptions = {
+  /** Poll for list changes (e.g. currentPosition after duration auto-advance) without toggling loading. */
+  pollIntervalMs?: number;
+};
+
+export function useCueLists(
+  userId?: number,
+  showId?: number,
+  options?: UseCueListsOptions
+): UseCueListsReturn {
   const [cueLists, setCueLists] = useState<CueList[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +50,18 @@ export function useCueLists(userId?: number, showId?: number): UseCueListsReturn
       console.error("Error fetching cue lists:", err);
     } finally {
       setLoading(false);
+    }
+  }, [userId, showId]);
+
+  const fetchCueListsSilent = useCallback(async () => {
+    try {
+      const filters: { userId?: number; showId?: number } = {};
+      if (userId !== undefined) filters.userId = userId;
+      if (showId !== undefined) filters.showId = showId;
+      const data = await cueListsApi.getAll(Object.keys(filters).length > 0 ? filters : undefined);
+      setCueLists(data);
+    } catch (err) {
+      console.error("Error polling cue lists:", err);
     }
   }, [userId, showId]);
 
@@ -168,6 +189,13 @@ export function useCueLists(userId?: number, showId?: number): UseCueListsReturn
   useEffect(() => {
     fetchCueLists();
   }, [fetchCueLists]);
+
+  const pollMs = options?.pollIntervalMs ?? 0;
+  useEffect(() => {
+    if (!pollMs || pollMs <= 0) return;
+    const id = window.setInterval(() => void fetchCueListsSilent(), pollMs);
+    return () => window.clearInterval(id);
+  }, [pollMs, fetchCueListsSilent]);
 
   return {
     cueLists,

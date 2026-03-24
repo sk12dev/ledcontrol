@@ -81,6 +81,17 @@ export interface ArtNetNode {
   dmxFixtures?: Array<{ id: number; name: string; startAddress: number; channelCount: number }>;
 }
 
+/** Live DMX snapshot for one Art-Net node universe (from backend shadow buffer). */
+export interface DmxMonitorNodeRow {
+  id: number;
+  name: string;
+  ipAddress: string;
+  subnet: number;
+  universe: number;
+  channels: number[];
+  fixtures: Array<{ id: number; name: string; startAddress: number; channelCount: number }>;
+}
+
 /**
  * Create Art-Net node request
  */
@@ -739,6 +750,10 @@ export const artnetNodesApi = {
   async getAll(): Promise<ArtNetNode[]> {
     const response = await fetch(`${API_BASE_URL}/artnet-nodes`);
     return handleResponse<ArtNetNode[]>(response);
+  },
+  async getDmxMonitor(): Promise<DmxMonitorNodeRow[]> {
+    const response = await fetch(`${API_BASE_URL}/artnet-nodes/dmx-monitor`);
+    return handleResponse<DmxMonitorNodeRow[]>(response);
   },
   async getById(id: number): Promise<ArtNetNode> {
     const response = await fetch(`${API_BASE_URL}/artnet-nodes/${id}`);

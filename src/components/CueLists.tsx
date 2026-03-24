@@ -17,7 +17,7 @@ export function CueLists({ showId, onEdit }: CueListsProps) {
     stepForward,
     stepBackward,
     goTo,
-  } = useCueLists(undefined, showId);
+  } = useCueLists(undefined, showId, { pollIntervalMs: 400 });
 
   const { cues } = useCues();
   const [deletingId, setDeletingId] = useState<number | null>(null);
