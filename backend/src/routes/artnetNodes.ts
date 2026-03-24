@@ -43,8 +43,7 @@ artnetNodesRouter.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/artnet-nodes/dmx-monitor — live last-sent DMX per node universe (must be before /:id)
-artnetNodesRouter.get("/dmx-monitor", async (_req: Request, res: Response) => {
+async function sendDmxMonitorSnapshot(_req: Request, res: Response): Promise<void> {
   try {
     const nodes = await prisma.artNetNode.findMany({
       orderBy: { createdAt: "desc" },
@@ -71,7 +70,12 @@ artnetNodesRouter.get("/dmx-monitor", async (_req: Request, res: Response) => {
     console.error("Error building DMX monitor snapshot:", error);
     res.status(500).json({ error: "Failed to fetch DMX monitor data" });
   }
-});
+}
+
+// Canonical DMX monitor endpoint (unambiguous with /:id routes).
+artnetNodesRouter.get("/monitor/dmx", sendDmxMonitorSnapshot);
+// Backward-compatible alias.
+artnetNodesRouter.get("/dmx-monitor", sendDmxMonitorSnapshot);
 
 // GET /api/artnet-nodes/:id
 artnetNodesRouter.get("/:id(\\d+)", async (req: Request, res: Response) => {

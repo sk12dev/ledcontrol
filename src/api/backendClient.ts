@@ -752,7 +752,11 @@ export const artnetNodesApi = {
     return handleResponse<ArtNetNode[]>(response);
   },
   async getDmxMonitor(): Promise<DmxMonitorNodeRow[]> {
-    const response = await fetch(`${API_BASE_URL}/artnet-nodes/dmx-monitor`);
+    let response = await fetch(`${API_BASE_URL}/artnet-nodes/monitor/dmx`);
+    if (response.status === 404) {
+      // Backward compatibility for older backend versions.
+      response = await fetch(`${API_BASE_URL}/artnet-nodes/dmx-monitor`);
+    }
     return handleResponse<DmxMonitorNodeRow[]>(response);
   },
   async getById(id: number): Promise<ArtNetNode> {
