@@ -24,6 +24,7 @@ import {
 import { useDmxFixtures } from "@/hooks/useDmxFixtures";
 import { useMultiDevice } from "@/hooks/useMultiDevice";
 import { useShows } from "@/hooks/useShows";
+import { useCues } from "@/hooks/useCues";
 import {
   executionApi,
   cuesApi,
@@ -113,6 +114,11 @@ export default function BuskingPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [cueSectionOpen, setCueSectionOpen] = useState(true);
+  const [selectedCueId, setSelectedCueId] = useState<string>("");
+  const [cueActionError, setCueActionError] = useState<string | null>(null);
+  const [cueActionSuccess, setCueActionSuccess] = useState<string | null>(null);
+  const [updatingCue, setUpdatingCue] = useState(false);
   const liveDebounceByUnit = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Patch
@@ -187,6 +193,20 @@ export default function BuskingPage() {
     unified.sort((a, b) => a.name.localeCompare(b.name));
     return unified;
   }, [commandPresets, commandColorPresets]);
+
+  const selectedShowNumber = useMemo(() => {
+    if (!selectedShowId) return undefined;
+    const n = Number.parseInt(selectedShowId, 10);
+    return Number.isNaN(n) ? undefined : n;
+  }, [selectedShowId]);
+
+  const { cues, loading: cuesLoading, refreshCues } = useCues(undefined, selectedShowNumber);
+
+  const cueById = useMemo(() => {
+    const map = new Map<number, (typeof cues)[number]>();
+    for (const cue of cues) map.set(cue.id, cue);
+    return map;
+  }, [cues]);
 
   const patchMapByFixtureNumber = useMemo(() => {
     const map = new Map<number, BuskingPatchEntry>();
@@ -330,6 +350,51 @@ export default function BuskingPage() {
     });
   }, []);
 
+  const buildCueStepsFromBusking = useCallback((): {
+    steps: CreateCueRequest["steps"];
+    error: string | null;
+  } => {
+    const steps: CreateCueRequest["steps"] = [];
+    let order = 0;
+    for (const unit of patchedUnitsOrdered) {
+      const state = getState(unit);
+      if (!state.on) continue;
+      const targetBrightness = Math.max(1, state.brightness);
+      if (unit.type === "device") {
+        steps.push({
+          order: order++,
+          deviceIds: [unit.id],
+          targetColor: state.color,
+          targetBrightness,
+          turnOff: false,
+        });
+      } else {
+        const fx = fixtures.find((f) => f.id === unit.id);
+        const raw = fixtureRawChannels[unit.id];
+        const useRaw = fx && raw && raw.length === fx.channelCount;
+        steps.push({
+          order: order++,
+          fixtureIds: [unit.id],
+          targetColor: state.color,
+          targetBrightness,
+          turnOff: false,
+          ...(useRaw
+            ? {
+                fixtureDmx: [{ fixtureId: unit.id, values: [...raw] }],
+              }
+            : {}),
+        });
+      }
+    }
+    if (steps.length === 0) {
+      return {
+        steps,
+        error: "Turn on at least one patched device or fixture to include in this cue.",
+      };
+    }
+    return { steps, error: null };
+  }, [patchedUnitsOrdered, getState, fixtures, fixtureRawChannels]);
+
   const applyLive = useCallback(
     (unit: Unit, state: UnitState) => {
       if (unit.type === "device") {
@@ -403,47 +468,16 @@ export default function BuskingPage() {
     setSaveError(null);
     setSaving(true);
     try {
-      const steps: CreateCueRequest["steps"] = [];
-      let order = 0;
-      for (const unit of patchedUnitsOrdered) {
-        const state = getState(unit);
-        if (!state.on) continue;
-        const targetBrightness = Math.max(1, state.brightness);
-        if (unit.type === "device") {
-          steps.push({
-            order: order++,
-            deviceIds: [unit.id],
-            targetColor: state.color,
-            targetBrightness,
-            turnOff: false,
-          });
-        } else {
-          const fx = fixtures.find((f) => f.id === unit.id);
-          const raw = fixtureRawChannels[unit.id];
-          const useRaw = fx && raw && raw.length === fx.channelCount;
-          steps.push({
-            order: order++,
-            fixtureIds: [unit.id],
-            targetColor: state.color,
-            targetBrightness,
-            turnOff: false,
-            ...(useRaw
-              ? {
-                  fixtureDmx: [{ fixtureId: unit.id, values: [...raw!] }],
-                }
-              : {}),
-          });
-        }
-      }
-      if (steps.length === 0) {
-        setSaveError("Turn on at least one patched device or fixture to include in this cue.");
+      const { steps, error } = buildCueStepsFromBusking();
+      if (error) {
+        setSaveError(error);
         setSaving(false);
         return;
       }
       await cuesApi.create({ name: cueName.trim(), showId, steps });
       setSaveSuccess(true);
       setCueName("");
-      setSelectedShowId("");
+      await refreshCues();
       setTimeout(() => {
         setSaveModalOpen(false);
         setSaveSuccess(false);
@@ -453,7 +487,113 @@ export default function BuskingPage() {
     } finally {
       setSaving(false);
     }
-  }, [patchedUnitsOrdered, getState, cueName, selectedShowId, fixtures, fixtureRawChannels]);
+  }, [cueName, selectedShowId, buildCueStepsFromBusking, refreshCues]);
+
+  const applyCueToBusking = useCallback(
+    (cueId: number) => {
+      const cue = cueById.get(cueId);
+      if (!cue) {
+        setCueActionError("Cue not found.");
+        setCueActionSuccess(null);
+        return;
+      }
+
+      const nextStates: Record<string, UnitState> = {};
+      const nextFixtureRaw: Record<number, number[]> = {};
+
+      const setUnitPartial = (unit: Unit, partial: Partial<UnitState>) => {
+        const key = unitKey(unit);
+        nextStates[key] = { ...(nextStates[key] ?? DEFAULT_STATE), ...partial };
+      };
+
+      const sortedSteps = [...cue.cueSteps].sort((a, b) => a.order - b.order);
+      for (const step of sortedSteps) {
+        const color = (step.targetColor as [number, number, number, number] | null) ?? null;
+        const brightness = step.targetBrightness;
+        const turnOff = step.turnOff;
+        const on = turnOff ? false : (brightness ?? 255) > 0;
+
+        for (const stepDevice of step.cueStepDevices) {
+          const unit = units.find(
+            (u) => u.type === "device" && u.id === stepDevice.deviceId
+          );
+          if (!unit) continue;
+          const partial: Partial<UnitState> = { on };
+          if (color) partial.color = color;
+          if (brightness != null) partial.brightness = brightness;
+          if (turnOff) partial.brightness = 0;
+          setUnitPartial(unit, partial);
+        }
+
+        for (const stepFixture of step.cueStepFixtures ?? []) {
+          const fixtureId = stepFixture.fixtureId ?? stepFixture.fixture?.id;
+          if (fixtureId == null) continue;
+          const unit = units.find(
+            (u) => u.type === "fixture" && u.id === fixtureId
+          );
+          if (!unit) continue;
+          const partial: Partial<UnitState> = { on };
+          if (color) partial.color = color;
+          if (brightness != null) partial.brightness = brightness;
+          if (turnOff) partial.brightness = 0;
+          setUnitPartial(unit, partial);
+          if (
+            Array.isArray(stepFixture.dmxChannelValues) &&
+            stepFixture.dmxChannelValues.length > 0
+          ) {
+            nextFixtureRaw[fixtureId] = [...stepFixture.dmxChannelValues];
+          }
+        }
+      }
+
+      setUnitStates((prev) => ({ ...prev, ...nextStates }));
+      setFixtureRawChannels((prev) => ({ ...prev, ...nextFixtureRaw }));
+      setSelectedCueId(String(cueId));
+      setCueActionError(null);
+      setCueActionSuccess(`Loaded cue "${cue.name}".`);
+    },
+    [cueById, units]
+  );
+
+  const handleSaveOverCue = useCallback(async () => {
+    const cueId = Number.parseInt(selectedCueId, 10);
+    if (Number.isNaN(cueId)) {
+      setCueActionError("Select a cue first.");
+      setCueActionSuccess(null);
+      return;
+    }
+    const cue = cueById.get(cueId);
+    if (!cue) {
+      setCueActionError("Selected cue no longer exists.");
+      setCueActionSuccess(null);
+      return;
+    }
+
+    const { steps, error } = buildCueStepsFromBusking();
+    if (error) {
+      setCueActionError(error);
+      setCueActionSuccess(null);
+      return;
+    }
+
+    setUpdatingCue(true);
+    try {
+      await cuesApi.update(cue.id, {
+        name: cue.name,
+        description: cue.description,
+        showId: cue.showId,
+        steps,
+      });
+      await refreshCues();
+      setCueActionError(null);
+      setCueActionSuccess(`Updated cue "${cue.name}".`);
+    } catch (e) {
+      setCueActionError(e instanceof Error ? e.message : "Failed to update cue.");
+      setCueActionSuccess(null);
+    } finally {
+      setUpdatingCue(false);
+    }
+  }, [selectedCueId, cueById, buildCueStepsFromBusking, refreshCues]);
 
   const handleCommandSubmit = useCallback(() => {
     const line = commandLine.trim();
@@ -721,6 +861,95 @@ export default function BuskingPage() {
                 </div>
               </>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Cue recall section - load and save over existing cues */}
+      <div className="container mx-auto px-6 pt-4">
+        <button
+          type="button"
+          onClick={() => setCueSectionOpen((o) => !o)}
+          className="flex items-center gap-2 text-zinc-400 hover:text-white text-sm font-medium"
+        >
+          {cueSectionOpen ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
+          Cue recall (load into busking and save over)
+        </button>
+        {cueSectionOpen && (
+          <div className="mt-3 p-4 rounded-lg bg-zinc-900/80 border border-zinc-800">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="grid gap-1.5 min-w-[240px]">
+                <Label className="text-zinc-400 text-xs">Show filter</Label>
+                <Select value={selectedShowId || "all"} onValueChange={(v) => setSelectedShowId(v === "all" ? "" : v)}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectValue placeholder="All shows" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All shows</SelectItem>
+                    {shows.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5 min-w-[320px] flex-1">
+                <Label className="text-zinc-400 text-xs">Cue</Label>
+                <Select value={selectedCueId || "none"} onValueChange={(v) => setSelectedCueId(v === "none" ? "" : v)}>
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-white">
+                    <SelectValue
+                      placeholder={
+                        cuesLoading
+                          ? "Loading cues..."
+                          : cues.length === 0
+                            ? "No cues available"
+                            : "Select cue"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Select cue</SelectItem>
+                    {cues.map((cue) => (
+                      <SelectItem key={cue.id} value={String(cue.id)}>
+                        {cue.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-zinc-700"
+                onClick={() => {
+                  const id = Number.parseInt(selectedCueId, 10);
+                  if (Number.isNaN(id)) {
+                    setCueActionError("Select a cue first.");
+                    setCueActionSuccess(null);
+                    return;
+                  }
+                  applyCueToBusking(id);
+                }}
+                disabled={cuesLoading || cues.length === 0}
+              >
+                Load cue
+              </Button>
+              <Button
+                type="button"
+                className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={handleSaveOverCue}
+                disabled={updatingCue || !selectedCueId}
+              >
+                {updatingCue ? "Saving..." : "Save over cue"}
+              </Button>
+            </div>
+            {cueActionError && <p className="mt-3 text-sm text-red-400">{cueActionError}</p>}
+            {cueActionSuccess && <p className="mt-3 text-sm text-emerald-400">{cueActionSuccess}</p>}
           </div>
         )}
       </div>
